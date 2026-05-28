@@ -20,12 +20,16 @@ include "llvm/Target/Target.td"
 
 include "IA64RegisterInfo.td"
 
+// Map the PointerLikeRegClass (ptr_rc) operands of the target-independent
+// pseudo-instructions to IA-64's general registers.
+defm : RemapAllTargetPseudoPointerOperands<GR>;
+
 //===----------------------------------------------------------------------===//
 // Instruction Descriptions
 //===----------------------------------------------------------------------===//
 
-// Phase C (next sub-step) replaces this empty placeholder with the ported
-// instruction definitions: include "IA64InstrInfo.td".
+include "IA64InstrInfo.td"
+
 def IA64InstrInfo : InstrInfo;
 
 def IA64 : Target {
