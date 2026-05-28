@@ -70,6 +70,8 @@ StringRef Triple::getArchTypeName(ArchType Kind) {
     return "dxil";
   case hexagon:
     return "hexagon";
+  case ia64:
+    return "ia64";
   case hsail64:
     return "hsail64";
   case hsail:
@@ -294,6 +296,9 @@ StringRef Triple::getArchTypePrefix(ArchType Kind) {
   case hexagon:
     return "hexagon";
 
+  case ia64:
+    return "ia64";
+
   // Intrinsics use amdgcn prefix.
   case amdgpu:
     return "amdgcn";
@@ -486,6 +491,7 @@ Triple::ArchType Triple::getArchTypeForLLVMName(StringRef Name) {
       .Case("riscv32be", riscv32be)
       .Case("riscv64be", riscv64be)
       .Case("hexagon", hexagon)
+      .Case("ia64", ia64)
       .Case("sparc", sparc)
       .Case("sparcel", sparcel)
       .Case("sparcv9", sparcv9)
@@ -639,6 +645,7 @@ Triple::ArchType Triple::parseArch(StringRef ArchName) {
           .Case("riscv32be", Triple::riscv32be)
           .Case("riscv64be", Triple::riscv64be)
           .Case("hexagon", Triple::hexagon)
+          .Cases({"ia64", "ia-64", "ia64le"}, Triple::ia64)
           .Cases({"s390x", "systemz"}, Triple::systemz)
           .Case("sparc", Triple::sparc)
           .Case("sparcel", Triple::sparcel)
@@ -1002,6 +1009,7 @@ static Triple::ObjectFormatType getDefaultFormat(const Triple &T) {
   case Triple::thumbeb:
   case Triple::ve:
   case Triple::xcore:
+  case Triple::ia64:
   case Triple::xtensa:
     return Triple::ELF;
 
@@ -1795,6 +1803,7 @@ unsigned Triple::getArchPointerBitWidth(llvm::Triple::ArchType Arch) {
   case llvm::Triple::systemz:
   case llvm::Triple::ve:
   case llvm::Triple::wasm64:
+  case llvm::Triple::ia64:
   case llvm::Triple::x86_64:
     return 64;
   }
@@ -1840,6 +1849,7 @@ Triple Triple::get32BitArchVariant() const {
   case Triple::bpfeb:
   case Triple::bpfel:
   case Triple::msp430:
+  case Triple::ia64:
   case Triple::systemz:
   case Triple::ve:
     T.setArch(UnknownArch);
@@ -1990,6 +2000,7 @@ Triple Triple::get64BitArchVariant() const {
   case Triple::tcele64:
   case Triple::ve:
   case Triple::wasm64:
+  case Triple::ia64:
   case Triple::x86_64:
     // Already 64-bit.
     break;
@@ -2104,6 +2115,7 @@ Triple Triple::getBigEndianArchVariant() const {
   case Triple::ve:
   case Triple::csky:
   case Triple::xtensa:
+  case Triple::ia64:
 
   // ARM is intentionally unsupported here, changing the architecture would
   // drop any arch suffixes.
@@ -2249,6 +2261,7 @@ bool Triple::isLittleEndian() const {
   case Triple::x86:
   case Triple::x86_64:
   case Triple::xcore:
+  case Triple::ia64:
   case Triple::xtensa:
     return true;
   default:
