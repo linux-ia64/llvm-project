@@ -629,6 +629,8 @@ const char *tools::getLDMOption(const llvm::Triple &T, const ArgList &Args) {
     if (tools::mips::hasMipsAbiArg(Args, "n32") || T.isABIN32())
       return "elf32ltsmipn32";
     return "elf64ltsmip";
+  case llvm::Triple::ia64:
+    return "elf64_ia64";
   case llvm::Triple::systemz:
     return "elf64_s390";
   case llvm::Triple::x86_64:

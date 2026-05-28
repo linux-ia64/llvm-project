@@ -271,9 +271,9 @@ LIBC_INLINE constexpr T nextupdown(T x) {
 } // namespace fputil
 } // namespace LIBC_NAMESPACE_DECL
 
-#ifdef LIBC_TYPES_LONG_DOUBLE_IS_X86_FLOAT80
+#if defined(LIBC_TYPES_LONG_DOUBLE_IS_X86_FLOAT80) && defined(LIBC_TARGET_ARCH_IS_X86)
 #include "x86_64/NextAfterLongDouble.h"
 #include "x86_64/NextUpDownLongDouble.h"
-#endif // LIBC_TYPES_LONG_DOUBLE_IS_X86_FLOAT80
+#endif // LIBC_TYPES_LONG_DOUBLE_IS_X86_FLOAT80 && LIBC_TARGET_ARCH_IS_X86
 
 #endif // LLVM_LIBC_SRC___SUPPORT_FPUTIL_MANIPULATIONFUNCTIONS_H

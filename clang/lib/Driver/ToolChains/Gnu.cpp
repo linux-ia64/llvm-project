@@ -413,10 +413,15 @@ void tools::gnutools::Linker::ConstructJob(Compilation &C, const JobAction &JA,
       }
       if (P.empty()) {
         const char *crtbegin;
+        bool IsIA64 = ToolChain.getTriple().getArch() == llvm::Triple::ia64;
         if (Args.hasArg(options::OPT_shared))
           crtbegin = isAndroid ? "crtbegin_so.o" : "crtbeginS.o";
         else if (IsStatic)
-          crtbegin = isAndroid ? "crtbegin_static.o" : "crtbeginT.o";
+          // IA-64 toolchains don't ship a static-specific crtbeginT.o; the
+          // plain crtbegin.o serves static links too.
+          crtbegin = isAndroid    ? "crtbegin_static.o"
+                     : IsIA64      ? "crtbegin.o"
+                                   : "crtbeginT.o";
         else if (IsPIE || IsStaticPIE)
           crtbegin = isAndroid ? "crtbegin_dynamic.o" : "crtbeginS.o";
         else
@@ -627,6 +632,10 @@ void tools::gnutools::Assembler::ConstructJob(Compilation &C,
 
   switch (getToolChain().getArch()) {
   default:
+    break;
+  // Select explicit stop mode
+  case llvm::Triple::ia64:
+    CmdArgs.push_back("-x");
     break;
   // Add --32/--64 to make sure we get the format we want.
   // This is incomplete
@@ -2453,6 +2462,10 @@ void Generic_GCC::GCCInstallationDetector::AddDefaultGCCPrefixes(
       "s390x-unknown-linux-gnu", "s390x-ibm-linux-gnu", "s390x-suse-linux",
       "s390x-redhat-linux"};
 
+  static const char *const IA64LibDirs[] = {"/lib"};
+  static const char *const IA64Triples[] = {"ia64-linux-gnu",
+                                            "ia64-unknown-linux-gnu"};
+
   using std::begin;
   using std::end;
 
@@ -2752,6 +2765,10 @@ void Generic_GCC::GCCInstallationDetector::AddDefaultGCCPrefixes(
   case llvm::Triple::systemz:
     LibDirs.append(begin(SystemZLibDirs), end(SystemZLibDirs));
     TripleAliases.append(begin(SystemZTriples), end(SystemZTriples));
+    break;
+  case llvm::Triple::ia64:
+    LibDirs.append(begin(IA64LibDirs), end(IA64LibDirs));
+    TripleAliases.append(begin(IA64Triples), end(IA64Triples));
     break;
   default:
     // By default, just rely on the standard lib directories and the original
@@ -3084,6 +3101,7 @@ bool Generic_GCC::IsIntegratedAssemblerDefault() const {
   case llvm::Triple::nvptx:
   case llvm::Triple::nvptx64:
   case llvm::Triple::xcore:
+  case llvm::Triple::ia64:
     return false;
   default:
     return true;

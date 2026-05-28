@@ -61,8 +61,17 @@ void MCSymbol::print(raw_ostream &OS, const MCAsmInfo *MAI) const {
   // some targets support quoting names with funny characters.  If the name
   // contains a funny character, then print it quoted.
   StringRef Name = getName();
+
+  // Some assemblers (IA-64 GNU as) parse a bare identifier matching a register
+  // name alias as that register even in symbol position, so a non-temporary
+  // symbol reference is decorated with a trailing '#' that the assembler strips.
+  // See MCAsmInfo::UseSymbolHashSuffix.
+  bool HashSuffix = MAI && MAI->useSymbolHashSuffix() && !isTemporary();
+
   if (!MAI || MAI->isValidUnquotedName(Name)) {
     OS << Name;
+    if (HashSuffix)
+      OS << '#';
     return;
   }
 
@@ -81,6 +90,8 @@ void MCSymbol::print(raw_ostream &OS, const MCAsmInfo *MAI) const {
       OS << C;
   }
   OS << '"';
+  if (HashSuffix)
+    OS << '#';
 }
 
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)

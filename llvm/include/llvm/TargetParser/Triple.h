@@ -61,6 +61,7 @@ public:
     csky,        // CSKY: csky
     dxil,        // DXIL 32-bit DirectX bytecode
     hexagon,     // Hexagon: hexagon
+    ia64,        // IA-64 (Itanium): ia64
     loongarch32, // LoongArch (32-bit): loongarch32
     loongarch64, // LoongArch (64-bit): loongarch64
     m68k,        // M68k: Motorola 680x0 family

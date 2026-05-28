@@ -569,6 +569,10 @@ std::string Triple::computeDataLayout(StringRef ABIName) const {
     return "e-m:e-p:32:32:32-a:0-n16:32-"
            "i64:64:64-i32:32:32-i16:16:16-i1:8:8-f32:32:32-f64:64:64-"
            "v32:32:32-v64:64:64-v512:512:512-v1024:1024:1024-v2048:2048:2048";
+  case Triple::ia64:
+    // IA-64 (Itanium): little-endian LP64, 80-bit long double (carried over
+    // from the pre-removal backend's "e-f80:128:128"), 128-bit stack align.
+    return "e-m:e-p:64:64-i64:64-f80:128-n8:16:32:64-S128";
   case Triple::loongarch32:
   case Triple::loongarch64:
     return computeLoongArchDataLayout(*this);

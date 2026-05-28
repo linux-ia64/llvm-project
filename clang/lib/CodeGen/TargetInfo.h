@@ -540,6 +540,9 @@ createLoongArchTargetCodeGenInfo(CodeGenModule &CGM, unsigned GRLen,
                                  unsigned FLen);
 
 std::unique_ptr<TargetCodeGenInfo>
+createIA64TargetCodeGenInfo(CodeGenModule &CGM);
+
+std::unique_ptr<TargetCodeGenInfo>
 createM68kTargetCodeGenInfo(CodeGenModule &CGM);
 
 std::unique_ptr<TargetCodeGenInfo>

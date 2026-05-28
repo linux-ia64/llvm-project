@@ -25,44 +25,84 @@ StringRef Triple::getArchTypeName(ArchType Kind) {
   switch (Kind) {
   case UnknownArch:    return "unknown";
 
-  case aarch64:        return "aarch64";
-  case aarch64_32:     return "aarch64_32";
-  case aarch64_be:     return "aarch64_be";
-  case amdgcn:         return "amdgcn";
-  case amdil64:        return "amdil64";
-  case amdil:          return "amdil";
-  case arc:            return "arc";
-  case arm:            return "arm";
-  case armeb:          return "armeb";
-  case avr:            return "avr";
-  case bpfeb:          return "bpfeb";
-  case bpfel:          return "bpfel";
-  case csky:           return "csky";
-  case dxil:           return "dxil";
-  case hexagon:        return "hexagon";
-  case hsail64:        return "hsail64";
-  case hsail:          return "hsail";
-  case kalimba:        return "kalimba";
-  case lanai:          return "lanai";
-  case loongarch32:    return "loongarch32";
-  case loongarch64:    return "loongarch64";
-  case m68k:           return "m68k";
-  case mips64:         return "mips64";
-  case mips64el:       return "mips64el";
-  case mips:           return "mips";
-  case mipsel:         return "mipsel";
-  case msp430:         return "msp430";
-  case nvptx64:        return "nvptx64";
-  case nvptx:          return "nvptx";
-  case ppc64:          return "powerpc64";
-  case ppc64le:        return "powerpc64le";
-  case ppc:            return "powerpc";
-  case ppcle:          return "powerpcle";
-  case r600:           return "r600";
-  case renderscript32: return "renderscript32";
-  case renderscript64: return "renderscript64";
-  case riscv32:        return "riscv32";
-  case riscv64:        return "riscv64";
+  case aarch64:
+    return "aarch64";
+  case aarch64_32:
+    return "aarch64_32";
+  case aarch64_be:
+    return "aarch64_be";
+  case amdgcn:
+    return "amdgcn";
+  case amdil64:
+    return "amdil64";
+  case amdil:
+    return "amdil";
+  case arc:
+    return "arc";
+  case arm:
+    return "arm";
+  case armeb:
+    return "armeb";
+  case avr:
+    return "avr";
+  case bpfeb:
+    return "bpfeb";
+  case bpfel:
+    return "bpfel";
+  case csky:
+    return "csky";
+  case dxil:
+    return "dxil";
+  case hexagon:
+    return "hexagon";
+  case ia64:
+    return "ia64";
+  case hsail64:
+    return "hsail64";
+  case hsail:
+    return "hsail";
+  case kalimba:
+    return "kalimba";
+  case lanai:
+    return "lanai";
+  case loongarch32:
+    return "loongarch32";
+  case loongarch64:
+    return "loongarch64";
+  case m68k:
+    return "m68k";
+  case mips64:
+    return "mips64";
+  case mips64el:
+    return "mips64el";
+  case mips:
+    return "mips";
+  case mipsel:
+    return "mipsel";
+  case msp430:
+    return "msp430";
+  case nvptx64:
+    return "nvptx64";
+  case nvptx:
+    return "nvptx";
+  case ppc64:
+    return "powerpc64";
+  case ppc64le:
+    return "powerpc64le";
+  case ppc:
+    return "powerpc";
+  case ppcle:
+    return "powerpcle";
+  case r600:
+    return "r600";
+  case renderscript32:
+    return "renderscript32";
+  case renderscript64:
+    return "renderscript64";
+  case riscv32:
+    return "riscv32";
+  case riscv64:
+    return "riscv64";
   case riscv32be:
     return "riscv32be";
   case riscv64be:
@@ -204,8 +244,13 @@ StringRef Triple::getArchTypePrefix(ArchType Kind) {
 
   case hexagon:     return "hexagon";
 
-  case amdgcn:      return "amdgcn";
-  case r600:        return "r600";
+  case ia64:
+    return "ia64";
+
+  case amdgcn:
+    return "amdgcn";
+  case r600:
+    return "r600";
 
   case bpfel:
   case bpfeb:       return "bpf";
@@ -481,6 +526,7 @@ Triple::ArchType Triple::getArchTypeForLLVMName(StringRef Name) {
       .Case("riscv32be", riscv32be)
       .Case("riscv64be", riscv64be)
       .Case("hexagon", hexagon)
+      .Case("ia64", ia64)
       .Case("sparc", sparc)
       .Case("sparcel", sparcel)
       .Case("sparcv9", sparcv9)
@@ -632,6 +678,7 @@ static Triple::ArchType parseArch(StringRef ArchName) {
           .Case("riscv32be", Triple::riscv32be)
           .Case("riscv64be", Triple::riscv64be)
           .Case("hexagon", Triple::hexagon)
+          .Cases({"ia64", "ia-64", "ia64le"}, Triple::ia64)
           .Cases({"s390x", "systemz"}, Triple::systemz)
           .Case("sparc", Triple::sparc)
           .Case("sparcel", Triple::sparcel)
@@ -1027,6 +1074,7 @@ static Triple::ObjectFormatType getDefaultFormat(const Triple &T) {
   case Triple::thumbeb:
   case Triple::ve:
   case Triple::xcore:
+  case Triple::ia64:
   case Triple::xtensa:
     return Triple::ELF;
 
@@ -1779,6 +1827,7 @@ unsigned Triple::getArchPointerBitWidth(llvm::Triple::ArchType Arch) {
   case llvm::Triple::systemz:
   case llvm::Triple::ve:
   case llvm::Triple::wasm64:
+  case llvm::Triple::ia64:
   case llvm::Triple::x86_64:
     return 64;
   }
@@ -1824,6 +1873,7 @@ Triple Triple::get32BitArchVariant() const {
   case Triple::bpfeb:
   case Triple::bpfel:
   case Triple::msp430:
+  case Triple::ia64:
   case Triple::systemz:
   case Triple::ve:
     T.setArch(UnknownArch);
@@ -1943,6 +1993,7 @@ Triple Triple::get64BitArchVariant() const {
   case Triple::systemz:
   case Triple::ve:
   case Triple::wasm64:
+  case Triple::ia64:
   case Triple::x86_64:
     // Already 64-bit.
     break;
@@ -2019,6 +2070,7 @@ Triple Triple::getBigEndianArchVariant() const {
   case Triple::ve:
   case Triple::csky:
   case Triple::xtensa:
+  case Triple::ia64:
 
   // ARM is intentionally unsupported here, changing the architecture would
   // drop any arch suffixes.
@@ -2139,6 +2191,7 @@ bool Triple::isLittleEndian() const {
   case Triple::x86:
   case Triple::x86_64:
   case Triple::xcore:
+  case Triple::ia64:
   case Triple::xtensa:
     return true;
   default:

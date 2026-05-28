@@ -147,6 +147,16 @@ ASM_FUNCTION_SPARC_RE = re.compile(
     flags=(re.M | re.S),
 )
 
+ASM_FUNCTION_IA64_RE = re.compile(
+    # IA-64 symbols carry a '#' suffix, so the label is "name#:". Capture the
+    # '#' in func_name_separator so the function name still matches the IR (and
+    # the "// @name" comment) while the emitted CHECK-LABEL keeps the suffix.
+    r'^_?(?P<func>[^#:\n]+)(?P<func_name_separator>#):[ \t]*//+[ \t]*@"?(?P=func)"?\n'
+    r"(?P<body>.*?)\s*"
+    r".Lfunc_end[0-9]+:\n",
+    flags=(re.M | re.S),
+)
+
 ASM_FUNCTION_SYSTEMZ_RE = re.compile(
     r'^_?(?P<func>[^:]+):[ \t]*#+[ \t]*@"?(?P=func)"?\n'
     r"(?:[ \t]+.cfi_startproc\n)?"
@@ -457,6 +467,17 @@ def scrub_asm_sparc(asm, args):
     return asm
 
 
+def scrub_asm_ia64(asm, args):
+    # Scrub runs of whitespace out of the assembly, but leave the leading
+    # whitespace in place.
+    asm = common.SCRUB_WHITESPACE_RE.sub(r" ", asm)
+    # Expand the tabs used for indentation.
+    asm = string.expandtabs(asm, 2)
+    # Strip trailing whitespace.
+    asm = common.SCRUB_TRAILING_WHITESPACE_RE.sub(r"", asm)
+    return asm
+
+
 def scrub_asm_spirv(asm, args):
     # Scrub runs of whitespace out of the assembly, but leave the leading
     # whitespace in place.
@@ -594,6 +615,7 @@ def get_run_handler(triple):
         "riscv64": (scrub_asm_riscv, ASM_FUNCTION_RISCV_RE),
         "lanai": (scrub_asm_lanai, ASM_FUNCTION_LANAI_RE),
         "sparc": (scrub_asm_sparc, ASM_FUNCTION_SPARC_RE),
+        "ia64": (scrub_asm_ia64, ASM_FUNCTION_IA64_RE),
         "spirv": (scrub_asm_spirv, ASM_FUNCTION_SPIRV_RE),
         "spirv32": (scrub_asm_spirv, ASM_FUNCTION_SPIRV_RE),
         "spirv64": (scrub_asm_spirv, ASM_FUNCTION_SPIRV_RE),

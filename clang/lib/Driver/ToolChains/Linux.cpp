@@ -219,6 +219,9 @@ static StringRef getOSLibDir(const llvm::Triple &Triple, const ArgList &Args) {
     }
   }
 
+  if (Triple.getArch() == llvm::Triple::ia64)
+    return "lib";
+
   return Triple.isArch32Bit() ? "lib" : "lib64";
 }
 
@@ -650,6 +653,10 @@ std::string Linux::getDynamicLinker(const ArgList &Args) const {
             .str();
     break;
   }
+  case llvm::Triple::ia64:
+    LibDir = "lib";
+    Loader = "ld-linux-ia64.so.2";
+    break;
   case llvm::Triple::m68k:
     LibDir = "lib";
     Loader = "ld.so.1";

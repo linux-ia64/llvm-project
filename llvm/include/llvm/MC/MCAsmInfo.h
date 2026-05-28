@@ -206,6 +206,9 @@ protected:
   /// quotes.
   bool SupportsQuotedNames = true;
 
+  /// If true, append '#' to every non-temporary symbol reference.
+  bool UseSymbolHashSuffix = false;
+
   /// This is true if data region markers should be printed as
   /// ".data_region/.end_data_region" directives. If false, use "$d/$a" labels
   /// instead.
@@ -570,6 +573,8 @@ public:
     return AllowDollarAtStartOfIdentifier;
   }
   bool supportsNameQuoting() const { return SupportsQuotedNames; }
+
+  bool useSymbolHashSuffix() const { return UseSymbolHashSuffix; }
 
   bool doesSupportDataRegionDirectives() const {
     return UseDataRegionDirectives;

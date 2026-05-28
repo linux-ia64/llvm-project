@@ -22,6 +22,7 @@
 #include "Targets/CSKY.h"
 #include "Targets/DirectX.h"
 #include "Targets/Hexagon.h"
+#include "Targets/IA64.h"
 #include "Targets/Lanai.h"
 #include "Targets/LoongArch.h"
 #include "Targets/M68k.h"
@@ -127,6 +128,14 @@ std::unique_ptr<TargetInfo> AllocateTarget(const llvm::Triple &Triple,
         Triple.getEnvironment() == llvm::Triple::Musl)
       return std::make_unique<LinuxTargetInfo<HexagonTargetInfo>>(Triple, Opts);
     return std::make_unique<HexagonTargetInfo>(Triple, Opts);
+
+  case llvm::Triple::ia64:
+    switch (os) {
+    case llvm::Triple::Linux:
+      return std::make_unique<LinuxTargetInfo<IA64TargetInfo>>(Triple, Opts);
+    default:
+      return std::make_unique<IA64TargetInfo>(Triple, Opts);
+    }
 
   case llvm::Triple::lanai:
     return std::make_unique<LanaiTargetInfo>(Triple, Opts);
