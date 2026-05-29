@@ -45,6 +45,32 @@ BitVector IA64RegisterInfo::getReservedRegs(const MachineFunction &MF) const {
   Reserved.set(IA64::r13); // thread pointer (tp)
   Reserved.set(IA64::r22); // reserved as an address-calculation scratch
   Reserved.set(IA64::rp);  // return pointer (b0)
+
+  // The output registers (out0-out7) are an alias for the top of the stacked
+  // register frame that 'alloc' carves out for passing arguments to callees;
+  // they are not freely allocatable. The pre-removal backend hid them from the
+  // GR allocation order via RegisterClass MethodBodies (a mechanism that no
+  // longer exists); we express that reservation here. They lead the GR
+  // allocation order, so without this the ar.pfs-save GR lands on 'out7',
+  // which is meaningless when 'alloc' declares zero output registers.
+  Reserved.set(IA64::out0);
+  Reserved.set(IA64::out1);
+  Reserved.set(IA64::out2);
+  Reserved.set(IA64::out3);
+  Reserved.set(IA64::out4);
+  Reserved.set(IA64::out5);
+  Reserved.set(IA64::out6);
+  Reserved.set(IA64::out7);
+
+  // ar.pfs is an application register, not a freely allocatable GPR — it is a
+  // member of the GR class only so 'mov ar.pfs = rN' / 'alloc rN = ar.pfs' can
+  // name it. The pre-removal backend kept it out of the GR allocation order via
+  // RegisterClass MethodBodies; reserving it here is the modern equivalent.
+  // Without this, the coalescer folds the ar.pfs-save vreg straight into
+  // AR_PFS, producing the nonsensical 'alloc ar.pfs = ar.pfs' (the save GR is
+  // lost). Reserved, the restore copy 'mov ar.pfs = rN' survives and the
+  // save vreg is allocated to a real scratch GR (r3 for a leaf function).
+  Reserved.set(IA64::AR_PFS);
   return Reserved;
 }
 
