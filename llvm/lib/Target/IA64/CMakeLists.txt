@@ -33,10 +33,21 @@ tablegen(LLVM IA64GenInstrInfo.inc -gen-instr-info)
 add_public_tablegen_target(IA64CommonTableGen)
 
 add_llvm_target(IA64CodeGen
+  IA64FrameLowering.cpp
+  IA64MachineFunctionInfo.cpp
+  IA64RegisterInfo.cpp
   IA64TargetMachine.cpp
 
   LINK_COMPONENTS
+  CodeGen
+  CodeGenTypes
+  Core
+  MC
   Support
+  Target
+  TargetParser
+  IA64Desc
+  IA64Info
 
   ADD_TO_COMPONENT
   IA64
