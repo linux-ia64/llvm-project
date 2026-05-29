@@ -13,7 +13,6 @@ add_llvm_component_group(IA64)
 # Remaining Phase C sub-steps grow IA64.td and add the matching tablegen calls,
 # modeled on lib/Target/Sparc:
 #
-#   tablegen(LLVM IA64GenAsmWriter.inc     -gen-asm-writer)
 #   tablegen(LLVM IA64GenSubtargetInfo.inc -gen-subtarget)
 #
 # The IA64ISD SDNodes are declared by hand in IA64ISelLowering.h (as the
@@ -32,14 +31,17 @@ tablegen(LLVM IA64GenRegisterInfo.inc -gen-register-info)
 tablegen(LLVM IA64GenInstrInfo.inc -gen-instr-info)
 tablegen(LLVM IA64GenCallingConv.inc -gen-callingconv)
 tablegen(LLVM IA64GenDAGISel.inc -gen-dag-isel)
+tablegen(LLVM IA64GenAsmWriter.inc -gen-asm-writer)
 
 add_public_tablegen_target(IA64CommonTableGen)
 
 add_llvm_target(IA64CodeGen
+  IA64AsmPrinter.cpp
   IA64FrameLowering.cpp
   IA64ISelDAGToDAG.cpp
   IA64ISelLowering.cpp
   IA64InstrInfo.cpp
+  IA64MCInstLower.cpp
   IA64MachineFunctionInfo.cpp
   IA64RegisterInfo.cpp
   IA64TargetMachine.cpp
