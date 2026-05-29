@@ -37,6 +37,7 @@ add_public_tablegen_target(IA64CommonTableGen)
 
 add_llvm_target(IA64CodeGen
   IA64AsmPrinter.cpp
+  IA64Bundling.cpp
   IA64FrameLowering.cpp
   IA64ISelDAGToDAG.cpp
   IA64ISelLowering.cpp

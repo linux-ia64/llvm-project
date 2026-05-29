@@ -21,6 +21,7 @@ class PassRegistry;
 class TargetMachine;
 
 FunctionPass *createIA64ISelDag(TargetMachine &TM);
+FunctionPass *createIA64BundlingPass();
 void initializeIA64DAGToDAGISelLegacyPass(PassRegistry &);
 
 } // end namespace llvm
