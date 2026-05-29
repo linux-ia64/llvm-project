@@ -34,6 +34,7 @@ add_public_tablegen_target(IA64CommonTableGen)
 
 add_llvm_target(IA64CodeGen
   IA64FrameLowering.cpp
+  IA64InstrInfo.cpp
   IA64MachineFunctionInfo.cpp
   IA64RegisterInfo.cpp
   IA64TargetMachine.cpp
