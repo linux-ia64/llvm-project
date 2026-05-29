@@ -10,20 +10,28 @@
 // properties of the instructions which are needed for code generation, machine
 // code emission, and analysis.
 //
-// Phase C status: this ports the instruction *descriptions* (operands, asm
-// strings, unit type, and the explicit instruction flags / Defs / Uses) and
-// wires -gen-instr-info. The DAG selection patterns, PatLeaf predicates, the
-// IA64ISD SDNodes and the standalone Pat<> rules from the pre-removal backend
-// are deferred to Phase D, where they are restored together with
-// IA64ISelLowering and the -gen-dag-isel / -gen-asm-writer generators (they
-// reference IA64ISD nodes, the generic `ret` node and operand PrintMethods that
-// only exist once the lowering is in place). Instructions that carried a
-// pattern keep an empty `[]` placeholder so Phase D can drop the patterns back
-// in.
+// Phase C ported the instruction *descriptions* (operands, asm strings, unit
+// type, explicit flags / Defs / Uses) and wired -gen-instr-info, leaving every
+// DAG selection pattern as an empty `[]` placeholder. Phase D (D6) restores
+// only the patterns the Stage-1 acceptance test (plus.ll) exercises — the
+// reg/reg `add` and the `retflag`/RET return — and wires -gen-dag-isel. The
+// remaining patterns, PatLeaf predicates and the GETFD/BRCALL nodes stay
+// deferred (calls, loads, FP, etc. are out of Stage-1 scope). The generic `ret`
+// SDNode no longer exists, so the old `Pat<(ret), (RET)>` is dropped; RET is now
+// matched directly from the target-specific `retflag` node.
 //
 //===----------------------------------------------------------------------===//
 
 include "IA64InstrFormats.td"
+
+//===----------------------------------------------------------------------===//
+// IA-64 specific DAG Nodes.
+//===----------------------------------------------------------------------===//
+
+// RET_FLAG - return with a flag (glue) operand. LowerReturn emits this after
+// restoring ar.pfs; it selects to the RET (br.ret) instruction below.
+def retflag : SDNode<"IA64ISD::RET_FLAG", SDTNone,
+                     [SDNPHasChain, SDNPOptInGlue]>;
 
 //===----------------------------------------------------------------------===//
 // Instruction types
@@ -70,7 +78,8 @@ let PrintMethod = "printCallOperand" in
 //===----------------------------------------------------------------------===//
 
 def ADD  : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, GR:$src2),
-           "add $dst = $src1, $src2", []>, isA;
+           "add $dst = $src1, $src2",
+           [(set GR:$dst, (add GR:$src1, GR:$src2))]>, isA;
 
 def ADD1 : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, GR:$src2),
            "add $dst = $src1, $src2, 1", []>, isA;
@@ -504,8 +513,9 @@ let isCall = 1, /* isTerminator = 1, isBranch = 1, */
 
 // Return branch:
 let isTerminator = 1, isReturn = 1 in
-  def RET : AForm<0x03, 0x0b, (outs), (ins),
-            "br.ret.sptk.many rp">, isB; // return
+  def RET : AForm_DAG<0x03, 0x0b, (outs), (ins),
+            "br.ret.sptk.many rp",
+            [(retflag)]>, isB; // return
 
 // the evil stop bit of despair
 def STOP : PseudoInstIA64<(outs), (ins variable_ops), ";;">;

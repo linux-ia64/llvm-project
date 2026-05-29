@@ -14,7 +14,6 @@ add_llvm_component_group(IA64)
 # modeled on lib/Target/Sparc:
 #
 #   tablegen(LLVM IA64GenAsmWriter.inc     -gen-asm-writer)
-#   tablegen(LLVM IA64GenDAGISel.inc       -gen-dag-isel)
 #   tablegen(LLVM IA64GenSubtargetInfo.inc -gen-subtarget)
 #
 # The IA64ISD SDNodes are declared by hand in IA64ISelLowering.h (as the
@@ -32,11 +31,13 @@ set(LLVM_TARGET_DEFINITIONS IA64.td)
 tablegen(LLVM IA64GenRegisterInfo.inc -gen-register-info)
 tablegen(LLVM IA64GenInstrInfo.inc -gen-instr-info)
 tablegen(LLVM IA64GenCallingConv.inc -gen-callingconv)
+tablegen(LLVM IA64GenDAGISel.inc -gen-dag-isel)
 
 add_public_tablegen_target(IA64CommonTableGen)
 
 add_llvm_target(IA64CodeGen
   IA64FrameLowering.cpp
+  IA64ISelDAGToDAG.cpp
   IA64ISelLowering.cpp
   IA64InstrInfo.cpp
   IA64MachineFunctionInfo.cpp
