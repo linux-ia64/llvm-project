@@ -6,26 +6,111 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Phase A scaffold.
+// This file implements the IA64 specific subclass of TargetMachine. It is the
+// capstone that aggregates the subtarget and wires up the codegen pass pipeline
+// (instruction selection + the bundling pre-emit pass), and registers the
+// target machine so `llc -mtriple=ia64` can allocate one.
 //
-// LLVM's build system treats every target in LLVM_TARGETS_TO_BUILD as a
-// complete backend: the generated Targets.def emits LLVM_TARGET(IA64), so
-// InitializeAllTargets() references LLVMInitializeIA64Target(). This stub
-// provides that entry point (lives in LLVMIA64CodeGen, which codegen tools
-// link via AllTargetsCodeGens) so the target links and appears in
-// `llc --version`. It is fleshed out in Phase D: LLVMInitializeIA64Target()
-// registers the real IA64TargetMachine, TargetLowering and the pass
-// configuration.
-//
-// Note: the companion LLVMInitializeIA64TargetMC() entry point lives in
-// MCTargetDesc/ (LLVMIA64Desc), because object-file tools such as llvm-ar link
-// AllTargetsDescs (not AllTargetsCodeGens) and reference it from there.
+// The companion LLVMInitializeIA64TargetMC() lives in MCTargetDesc/.
 //
 //===----------------------------------------------------------------------===//
 
+#include "IA64TargetMachine.h"
+#include "IA64.h"
+#include "IA64MachineFunctionInfo.h"
+#include "TargetInfo/IA64TargetInfo.h"
+#include "llvm/CodeGen/Passes.h"
+#include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
+#include "llvm/CodeGen/TargetPassConfig.h"
+#include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/Compiler.h"
+#include <optional>
+
+using namespace llvm;
 
 extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeIA64Target() {
-  // TODO(Phase D): RegisterTargetMachine<IA64TargetMachine>, register the
-  // TargetLowering and the IA64PassConfig.
+  // Register the target machine, so `llc -mtriple=ia64` can allocate one.
+  RegisterTargetMachine<IA64TargetMachine> X(getTheIA64Target());
+
+  PassRegistry &PR = *PassRegistry::getPassRegistry();
+  initializeIA64DAGToDAGISelLegacyPass(PR);
+}
+
+static Reloc::Model getEffectiveRelocModel(std::optional<Reloc::Model> RM) {
+  return RM.value_or(Reloc::Static);
+}
+
+IA64TargetMachine::IA64TargetMachine(const Target &T, const Triple &TT,
+                                     StringRef CPU, StringRef FS,
+                                     const TargetOptions &Options,
+                                     std::optional<Reloc::Model> RM,
+                                     std::optional<CodeModel::Model> CM,
+                                     CodeGenOptLevel OL, bool JIT)
+    : CodeGenTargetMachineImpl(T, TT.computeDataLayout(), TT, CPU, FS, Options,
+                               getEffectiveRelocModel(RM),
+                               getEffectiveCodeModel(CM, CodeModel::Small), OL),
+      TLOF(std::make_unique<TargetLoweringObjectFileELF>()) {
+  initAsmInfo();
+}
+
+IA64TargetMachine::~IA64TargetMachine() = default;
+
+const IA64Subtarget *
+IA64TargetMachine::getSubtargetImpl(const Function &F) const {
+  Attribute CPUAttr = F.getFnAttribute("target-cpu");
+  Attribute TuneAttr = F.getFnAttribute("tune-cpu");
+  Attribute FSAttr = F.getFnAttribute("target-features");
+
+  std::string CPU =
+      CPUAttr.isValid() ? CPUAttr.getValueAsString().str() : TargetCPU;
+  std::string TuneCPU =
+      TuneAttr.isValid() ? TuneAttr.getValueAsString().str() : CPU;
+  std::string FS =
+      FSAttr.isValid() ? FSAttr.getValueAsString().str() : TargetFS;
+
+  auto &I = SubtargetMap[CPU + FS];
+  if (!I) {
+    I = std::make_unique<IA64Subtarget>(getTargetTriple(), CPU, TuneCPU, FS,
+                                        *this);
+  }
+  return I.get();
+}
+
+MachineFunctionInfo *IA64TargetMachine::createMachineFunctionInfo(
+    BumpPtrAllocator &Allocator, const Function &F,
+    const TargetSubtargetInfo *STI) const {
+  return IA64FunctionInfo::create<IA64FunctionInfo>(Allocator, F, STI);
+}
+
+//===----------------------------------------------------------------------===//
+// Pass Pipeline Configuration
+//===----------------------------------------------------------------------===//
+
+namespace {
+class IA64PassConfig : public TargetPassConfig {
+public:
+  IA64PassConfig(IA64TargetMachine &TM, PassManagerBase &PM)
+      : TargetPassConfig(TM, PM) {}
+
+  IA64TargetMachine &getIA64TargetMachine() const {
+    return getTM<IA64TargetMachine>();
+  }
+
+  bool addInstSelector() override;
+  void addPreEmitPass() override;
+};
+} // end anonymous namespace
+
+TargetPassConfig *IA64TargetMachine::createPassConfig(PassManagerBase &PM) {
+  return new IA64PassConfig(*this, PM);
+}
+
+bool IA64PassConfig::addInstSelector() {
+  addPass(createIA64ISelDag(getIA64TargetMachine()));
+  return false;
+}
+
+void IA64PassConfig::addPreEmitPass() {
+  // Insert stop bits so the assembler can bundle correctly.
+  addPass(createIA64BundlingPass());
 }

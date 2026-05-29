@@ -13,6 +13,7 @@
 
 // Get the target-independent interfaces which we are implementing.
 include "llvm/Target/Target.td"
+include "llvm/TableGen/SearchableTable.td"
 
 //===----------------------------------------------------------------------===//
 // Register File Description
@@ -37,6 +38,14 @@ def IA64InstrInfo : InstrInfo;
 //===----------------------------------------------------------------------===//
 
 include "IA64CallingConv.td"
+
+//===----------------------------------------------------------------------===//
+// IA-64 processors
+//===----------------------------------------------------------------------===//
+
+// The pre-removal backend had a trivial subtarget with no features; a single
+// generic processor with no scheduling model is enough to drive -gen-subtarget.
+def : ProcessorModel<"generic", NoSchedModel, []>;
 
 def IA64 : Target {
   let InstructionSet = IA64InstrInfo;

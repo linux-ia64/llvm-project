@@ -13,11 +13,11 @@
 // in the target's "Desc" library (LLVMIA64Desc), which object-file tools such
 // as llvm-ar link via AllTargetsDescs.
 //
-// Phase B registered the MCAsmInfo (replacing the pre-removal IA64TargetAsmInfo).
-// D4 added the MCInstrInfo (the instruction table GET_INSTRINFO_MC_DESC must be
-// emitted here so IA64InstrInfo's generated constructor links). D7 adds the
-// MCRegisterInfo and the MCInstPrinter (the asm-output path). Only the
-// MCSubtargetInfo registration remains deferred (to the subtarget step).
+// This registers the full MC component set for the asm-output path: MCAsmInfo
+// (replacing the pre-removal IA64TargetAsmInfo), MCInstrInfo (the instruction
+// table also backs IA64InstrInfo's generated constructor), MCRegisterInfo,
+// MCInstPrinter and MCSubtargetInfo. The object-emission components
+// (MCCodeEmitter / MCAsmBackend / ELFObjectWriter) remain out of Stage-1 scope.
 //
 //===----------------------------------------------------------------------===//
 
@@ -29,6 +29,7 @@
 #include "llvm/MC/MCInstPrinter.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
+#include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/MCTargetOptions.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/Compiler.h"
@@ -41,6 +42,9 @@ using namespace llvm;
 
 #define GET_REGINFO_MC_DESC
 #include "IA64GenRegisterInfo.inc"
+
+#define GET_SUBTARGETINFO_MC_DESC
+#include "IA64GenSubtargetInfo.inc"
 
 static MCAsmInfo *createIA64MCAsmInfo(const MCRegisterInfo &MRI,
                                       const Triple &TT,
@@ -68,6 +72,13 @@ static MCInstPrinter *createIA64MCInstPrinter(const Triple & /*T*/,
   return new IA64InstPrinter(MAI, MII, MRI);
 }
 
+static MCSubtargetInfo *createIA64MCSubtargetInfo(const Triple &TT,
+                                                  StringRef CPU, StringRef FS) {
+  if (CPU.empty())
+    CPU = "generic";
+  return createIA64MCSubtargetInfoImpl(TT, CPU, /*TuneCPU=*/CPU, FS);
+}
+
 extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void
 LLVMInitializeIA64TargetMC() {
   Target &T = getTheIA64Target();
@@ -83,6 +94,6 @@ LLVMInitializeIA64TargetMC() {
   TargetRegistry::RegisterMCRegInfo(T, createIA64MCRegisterInfo);
   TargetRegistry::RegisterMCInstPrinter(T, createIA64MCInstPrinter);
 
-  // TODO: register the remaining MC components as their backing C++ lands:
-  //   TargetRegistry::RegisterMCSubtargetInfo(T, createIA64MCSubtargetInfo);
+  // Register the MC subtarget info.
+  TargetRegistry::RegisterMCSubtargetInfo(T, createIA64MCSubtargetInfo);
 }
