@@ -1,0 +1,231 @@
+//===-- IA64ISelLowering.cpp - IA64 DAG Lowering Implementation -----------===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+//
+// This file implements the IA64TargetLowering class.
+//
+// Scope note (Stage 1): only the leaf-function path needed by plus.ll is
+// implemented — LowerFormalArguments and LowerReturn. LowerCall (and the
+// varargs / TLS / FP-conversion custom lowering the pre-removal backend had)
+// are deferred; calls report a fatal error rather than miscompile.
+//
+//===----------------------------------------------------------------------===//
+
+#include "IA64ISelLowering.h"
+#include "IA64MachineFunctionInfo.h"
+#include "IA64RegisterInfo.h"
+#include "MCTargetDesc/IA64MCTargetDesc.h"
+#include "llvm/CodeGen/CallingConvLower.h"
+#include "llvm/CodeGen/MachineFrameInfo.h"
+#include "llvm/CodeGen/MachineFunction.h"
+#include "llvm/CodeGen/MachineInstrBuilder.h"
+#include "llvm/CodeGen/MachineRegisterInfo.h"
+#include "llvm/CodeGen/SelectionDAG.h"
+#include "llvm/CodeGen/TargetInstrInfo.h"
+#include "llvm/CodeGen/TargetSubtargetInfo.h"
+#include "llvm/Support/ErrorHandling.h"
+
+using namespace llvm;
+
+#define GET_CALLING_CONV_IMPL
+
+#include "IA64GenCallingConv.inc"
+
+IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
+                                       const TargetSubtargetInfo &STI)
+    : TargetLowering(TM, STI) {
+  // Register classes: general (i64), floating-point (f64) and predicate (i1).
+  addRegisterClass(MVT::i64, &IA64::GRRegClass);
+  addRegisterClass(MVT::f64, &IA64::FPRegClass);
+  addRegisterClass(MVT::i1, &IA64::PRRegClass);
+
+  // IA-64 uses SELECT, not SELECT_CC, and has no native BR_CC / jump tables.
+  setOperationAction(ISD::BRIND, MVT::Other, Expand);
+  setOperationAction(ISD::BR_JT, MVT::Other, Expand);
+  setOperationAction(ISD::BR_CC, MVT::Other, Expand);
+  setOperationAction(ISD::SELECT_CC, MVT::Other, Expand);
+
+  setOperationAction(ISD::SINT_TO_FP, MVT::i1, Promote);
+  setOperationAction(ISD::UINT_TO_FP, MVT::i1, Promote);
+  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i1, Expand);
+
+  setOperationAction(ISD::FREM, MVT::f32, Expand);
+  setOperationAction(ISD::FREM, MVT::f64, Expand);
+
+  // We don't support sin/cos/sqrt/pow.
+  for (MVT VT : {MVT::f32, MVT::f64}) {
+    setOperationAction(ISD::FSIN, VT, Expand);
+    setOperationAction(ISD::FCOS, VT, Expand);
+    setOperationAction(ISD::FSQRT, VT, Expand);
+    setOperationAction(ISD::FPOW, VT, Expand);
+    // FIXME: IA64 supports fcopysign natively.
+    setOperationAction(ISD::FCOPYSIGN, VT, Expand);
+  }
+
+  // The legalizer expansion of ctlz/cttz in terms of ctpop is large; expand.
+  setOperationAction(ISD::CTLZ, MVT::i64, Expand);
+  setOperationAction(ISD::CTTZ, MVT::i64, Expand);
+  setOperationAction(ISD::ROTL, MVT::i64, Expand);
+  setOperationAction(ISD::ROTR, MVT::i64, Expand);
+  // FIXME: IA64 has this (mux @rev), but it is not implemented.
+  setOperationAction(ISD::BSWAP, MVT::i64, Expand);
+
+  // Use the default (library/expansion) implementations.
+  setOperationAction(ISD::VACOPY, MVT::Other, Expand);
+  setOperationAction(ISD::VAEND, MVT::Other, Expand);
+  setOperationAction(ISD::STACKSAVE, MVT::Other, Expand);
+  setOperationAction(ISD::STACKRESTORE, MVT::Other, Expand);
+  setOperationAction(ISD::DYNAMIC_STACKALLOC, MVT::i64, Expand);
+
+  setStackPointerRegisterToSaveRestore(IA64::r12);
+
+  // The pre-removal backend reported a Log2 function alignment of 5, i.e. a
+  // 32-byte alignment ('.align 32' in the reference output).
+  setMinFunctionAlignment(Align(32));
+
+  computeRegisterProperties(STI.getRegisterInfo());
+
+  // Note: the pre-removal backend called addLegalFPImmediate(0/±1) here; that
+  // API was removed (FP-immediate legality is now an isFPImmLegal override).
+  // plus.ll uses no FP immediates, so this is left for a later stage.
+}
+
+const char *IA64TargetLowering::getTargetNodeName(unsigned Opcode) const {
+  switch (Opcode) {
+  default:
+    return nullptr;
+  case IA64ISD::GETFD:
+    return "IA64ISD::GETFD";
+  case IA64ISD::BRCALL:
+    return "IA64ISD::BRCALL";
+  case IA64ISD::RET_FLAG:
+    return "IA64ISD::RET_FLAG";
+  }
+}
+
+EVT IA64TargetLowering::getSetCCResultType(const DataLayout & /*DL*/,
+                                           LLVMContext & /*Context*/,
+                                           EVT /*VT*/) const {
+  // SETCC produces a predicate register value.
+  return MVT::i1;
+}
+
+SDValue IA64TargetLowering::LowerFormalArguments(
+    SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
+    const SmallVectorImpl<ISD::InputArg> &Ins, const SDLoc &dl,
+    SelectionDAG &DAG, SmallVectorImpl<SDValue> &InVals) const {
+  MachineFunction &MF = DAG.getMachineFunction();
+  MachineRegisterInfo &RegInfo = MF.getRegInfo();
+
+  SmallVector<CCValAssign, 16> ArgLocs;
+  CCState CCInfo(CallConv, isVarArg, MF, ArgLocs, *DAG.getContext());
+  CCInfo.AnalyzeFormalArguments(Ins, CC_IA64);
+
+  for (CCValAssign &VA : ArgLocs) {
+    if (VA.isRegLoc()) {
+      // The argument arrives in a register.
+      MVT RegVT = VA.getLocVT();
+      const TargetRegisterClass *RC;
+      if (RegVT == MVT::i64)
+        RC = &IA64::GRRegClass;
+      else if (RegVT == MVT::f64)
+        RC = &IA64::FPRegClass;
+      else
+        report_fatal_error("IA64: unhandled formal-argument register type");
+
+      Register VReg = RegInfo.createVirtualRegister(RC);
+      RegInfo.addLiveIn(VA.getLocReg(), VReg);
+      SDValue ArgValue = DAG.getCopyFromReg(Chain, dl, VReg, RegVT);
+
+      // If the argument was widened to fill the register, narrow it back to
+      // its declared type.
+      if (RegVT != VA.getValVT()) {
+        if (RegVT.isInteger())
+          ArgValue = DAG.getNode(ISD::TRUNCATE, dl, VA.getValVT(), ArgValue);
+        else
+          ArgValue = DAG.getNode(ISD::FP_ROUND, dl, VA.getValVT(), ArgValue,
+                                 DAG.getIntPtrConstant(0, dl, /*isTarget=*/true));
+      }
+
+      InVals.push_back(ArgValue);
+    } else {
+      // The argument arrives on the stack, above the 16-byte scratch area.
+      assert(VA.isMemLoc() && "unexpected argument location");
+      int FI = MF.getFrameInfo().CreateFixedObject(
+          8, 16 + VA.getLocMemOffset(), /*IsImmutable=*/true);
+      SDValue FIN = DAG.getFrameIndex(FI, getPointerTy(DAG.getDataLayout()));
+      InVals.push_back(
+          DAG.getLoad(VA.getValVT(), dl, Chain, FIN, MachinePointerInfo()));
+    }
+  }
+
+  // Materialise the PSEUDO_ALLOC at function entry. Frame lowering later scans
+  // for it to size and place the real 'alloc'; LowerReturn reads the captured
+  // vreg to restore ar.pfs before the branch.
+  const TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();
+  Register VirtGPR = RegInfo.createVirtualRegister(&IA64::GRRegClass);
+  MachineBasicBlock &EntryBB = MF.front();
+  BuildMI(EntryBB, EntryBB.begin(), DebugLoc(), TII.get(IA64::PSEUDO_ALLOC),
+          VirtGPR);
+  MF.getInfo<IA64FunctionInfo>()->setVirtGPR(VirtGPR);
+
+  return Chain;
+}
+
+SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo & /*CLI*/,
+                                      SmallVectorImpl<SDValue> & /*InVals*/) const {
+  report_fatal_error("IA64: function calls are not yet supported "
+                     "(Stage 1 targets leaf functions only)");
+}
+
+SDValue IA64TargetLowering::LowerReturn(
+    SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
+    const SmallVectorImpl<ISD::OutputArg> &Outs,
+    const SmallVectorImpl<SDValue> &OutVals, const SDLoc &dl,
+    SelectionDAG &DAG) const {
+  MachineFunction &MF = DAG.getMachineFunction();
+
+  SmallVector<CCValAssign, 16> RVLocs;
+  CCState CCInfo(CallConv, isVarArg, MF, RVLocs, *DAG.getContext());
+  CCInfo.AnalyzeReturn(Outs, RetCC_IA64);
+
+  // Read back the ar.pfs value saved into a vreg at function entry.
+  Register VirtGPR = MF.getInfo<IA64FunctionInfo>()->getVirtGPR();
+  SDValue ARPFS = DAG.getCopyFromReg(Chain, dl, VirtGPR, MVT::i64);
+  Chain = ARPFS.getValue(1);
+
+  SDValue Glue;
+  SmallVector<SDValue, 4> RetOps(1, Chain); // RetOps[0] is patched below.
+
+  // Copy the return values into their assigned registers (r8 / F8).
+  for (unsigned i = 0, e = RVLocs.size(); i != e; ++i) {
+    CCValAssign &VA = RVLocs[i];
+    assert(VA.isRegLoc() && "return value must be in a register");
+    SDValue Val = OutVals[i];
+
+    if (VA.getLocVT() != VA.getValVT()) {
+      if (VA.getLocVT().isInteger())
+        Val = DAG.getNode(ISD::ANY_EXTEND, dl, VA.getLocVT(), Val);
+      else
+        Val = DAG.getNode(ISD::FP_EXTEND, dl, VA.getLocVT(), Val);
+    }
+
+    Chain = DAG.getCopyToReg(Chain, dl, VA.getLocReg(), Val, Glue);
+    Glue = Chain.getValue(1);
+    RetOps.push_back(DAG.getRegister(VA.getLocReg(), VA.getLocVT()));
+  }
+
+  // Restore ar.pfs immediately before the return, glued into it.
+  Chain = DAG.getCopyToReg(Chain, dl, IA64::AR_PFS, ARPFS, Glue);
+  Glue = Chain.getValue(1);
+
+  RetOps[0] = Chain;
+  if (Glue.getNode())
+    RetOps.push_back(Glue);
+
+  return DAG.getNode(IA64ISD::RET_FLAG, dl, MVT::Other, RetOps);
+}

@@ -32,6 +32,12 @@ include "IA64InstrInfo.td"
 
 def IA64InstrInfo : InstrInfo;
 
+//===----------------------------------------------------------------------===//
+// Calling Convention Description
+//===----------------------------------------------------------------------===//
+
+include "IA64CallingConv.td"
+
 def IA64 : Target {
   let InstructionSet = IA64InstrInfo;
 }

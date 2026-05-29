@@ -20,6 +20,13 @@ namespace llvm {
 class IA64FunctionInfo : public MachineFunctionInfo {
   virtual void anchor();
 
+  // The virtual register that receives ar.pfs at function entry (via the
+  // PSEUDO_ALLOC). LowerFormalArguments creates it; LowerReturn copies it back
+  // into ar.pfs before the return. In the pre-removal backend this lived as a
+  // mutable member of IA64TargetLowering, which is unsafe now that lowering is
+  // a shared const per-target object, so it belongs here, per-function.
+  Register VirtGPR;
+
 public:
   // How many 'out' registers are used by this MachineFunction. Used to compute
   // the appropriate entry in the 'alloc' instruction at the top of the
@@ -27,6 +34,9 @@ public:
   unsigned OutRegsUsed = 0;
 
   IA64FunctionInfo(const Function &F, const TargetSubtargetInfo *STI) {}
+
+  Register getVirtGPR() const { return VirtGPR; }
+  void setVirtGPR(Register Reg) { VirtGPR = Reg; }
 
   MachineFunctionInfo *
   clone(BumpPtrAllocator &Allocator, MachineFunction &DestMF,

@@ -15,9 +15,11 @@ add_llvm_component_group(IA64)
 #
 #   tablegen(LLVM IA64GenAsmWriter.inc     -gen-asm-writer)
 #   tablegen(LLVM IA64GenDAGISel.inc       -gen-dag-isel)
-#   tablegen(LLVM IA64GenCallingConv.inc   -gen-callingconv)
 #   tablegen(LLVM IA64GenSubtargetInfo.inc -gen-subtarget)
-#   tablegen(LLVM IA64GenSDNodeInfo.inc    -gen-sd-node-info -sdnode-namespace=IA64ISD)
+#
+# The IA64ISD SDNodes are declared by hand in IA64ISelLowering.h (as the
+# pre-removal backend did and many in-tree targets still do), so -gen-sd-node-info
+# is not used.
 #
 # Phase D then grows the add_llvm_target source list (IA64AsmPrinter.cpp,
 # IA64Bundling.cpp, IA64FrameLowering.cpp, IA64InstrInfo.cpp,
@@ -29,11 +31,13 @@ set(LLVM_TARGET_DEFINITIONS IA64.td)
 
 tablegen(LLVM IA64GenRegisterInfo.inc -gen-register-info)
 tablegen(LLVM IA64GenInstrInfo.inc -gen-instr-info)
+tablegen(LLVM IA64GenCallingConv.inc -gen-callingconv)
 
 add_public_tablegen_target(IA64CommonTableGen)
 
 add_llvm_target(IA64CodeGen
   IA64FrameLowering.cpp
+  IA64ISelLowering.cpp
   IA64InstrInfo.cpp
   IA64MachineFunctionInfo.cpp
   IA64RegisterInfo.cpp
