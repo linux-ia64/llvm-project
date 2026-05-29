@@ -30,8 +30,13 @@ include "IA64InstrFormats.td"
 
 // RET_FLAG - return with a flag (glue) operand. LowerReturn emits this after
 // restoring ar.pfs; it selects to the RET (br.ret) instruction below.
+// SDNPVariadic is required so the instruction selector transfers the extra
+// register operands LowerReturn glues onto this node (the return-value regs,
+// e.g. r8, and ar.pfs) onto the selected RET machine instruction as implicit
+// uses. Without it those registers look dead and the return-value copies (and
+// everything feeding them) get eliminated, leaving just the 'alloc'.
 def retflag : SDNode<"IA64ISD::RET_FLAG", SDTNone,
-                     [SDNPHasChain, SDNPOptInGlue]>;
+                     [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
 
 //===----------------------------------------------------------------------===//
 // Instruction types
@@ -239,6 +244,11 @@ def SHRS  : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, GR:$src2),
           "shr $dst = $src1, $src2", []>, isI;
 
 def MOV : AForm<0x03, 0x0b, (outs GR:$dst), (ins GR:$src), "mov $dst = $src">, isA;
+// Restore ar.pfs from a general register: 'mov ar.pfs = rN'. ar.pfs lives in
+// its own (AR) register class, so this is a distinct instruction from the
+// GR->GR MOV above; copyPhysReg emits it for copies into AR_PFS.
+def MOV_TO_AR_PFS : AForm<0x03, 0x0b, (outs AR:$dst), (ins GR:$src),
+  "mov $dst = $src">, isA;
 def FMOV : AForm<0x03, 0x0b, (outs FP:$dst), (ins FP:$src),
   "mov $dst = $src">, isF; // XXX: there _is_ no fmov
 def PMOV : AForm<0x03, 0x0b, (outs GR:$dst), (ins GR:$src, PR:$qp),

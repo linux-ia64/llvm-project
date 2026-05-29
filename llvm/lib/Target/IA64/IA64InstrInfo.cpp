@@ -42,6 +42,14 @@ void IA64InstrInfo::copyPhysReg(MachineBasicBlock &MBB,
     return;
   }
 
+  if (IA64::ARRegClass.contains(DestReg)) {
+    // Restoring ar.pfs from a general register: 'mov ar.pfs = rN'. ar.pfs is
+    // in its own register class, so the generic GR MOV below cannot name it.
+    BuildMI(MBB, I, DL, get(IA64::MOV_TO_AR_PFS), DestReg)
+        .addReg(SrcReg, getKillRegState(KillSrc));
+    return;
+  }
+
   // Otherwise MOV works for both general and FP registers.
   BuildMI(MBB, I, DL, get(IA64::MOV), DestReg)
       .addReg(SrcReg, getKillRegState(KillSrc));

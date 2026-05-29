@@ -219,9 +219,13 @@ SDValue IA64TargetLowering::LowerReturn(
     RetOps.push_back(DAG.getRegister(VA.getLocReg(), VA.getLocVT()));
   }
 
-  // Restore ar.pfs immediately before the return, glued into it.
+  // Restore ar.pfs immediately before the return, glued into it. Like the
+  // return-value registers above, ar.pfs must also be added to RetOps so the
+  // (SDNPVariadic) RET node carries it as an implicit use; otherwise the copy
+  // — and the PSEUDO_ALLOC feeding it — are eliminated as dead.
   Chain = DAG.getCopyToReg(Chain, dl, IA64::AR_PFS, ARPFS, Glue);
   Glue = Chain.getValue(1);
+  RetOps.push_back(DAG.getRegister(IA64::AR_PFS, MVT::i64));
 
   RetOps[0] = Chain;
   if (Glue.getNode())

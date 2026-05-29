@@ -416,13 +416,23 @@ def GR : RegisterClass<"IA64", [i64], 64,
         r96, r97, r98, r99, r100, r101, r102, r103,
         r104, r105, r106, r107, r108, r109, r110, r111,
         r112, r113, r114, r115, r116, r117, r118, r119,
-        // last 17 are special (look down)
+        // last 16 are special (look down)
         r120, r121, r122, r123, r124, r125, r126, r127,
-        r0, r1, r2, r5, r12, r13, r22, rp, AR_PFS)>;
+        r0, r1, r2, r5, r12, r13, r22, rp)>;
 // The pre-removal backend hid the 'out' registers and the reserved registers
-// (r0,r1,r2,r5,r12,r13,r22,rp,AR_PFS) from the allocation order via RegisterClass
+// (r0,r1,r2,r5,r12,r13,r22,rp) from the allocation order via RegisterClass
 // MethodBodies, a mechanism that no longer exists.  Those reservations are now
 // expressed in IA64RegisterInfo::getReservedRegs (ported in Phase D).
+//
+// ar.pfs (the "previous function state" application register) is deliberately
+// NOT a member of GR.  The pre-removal backend kept it in GR and excluded it
+// from the allocation order, but the modern register coalescer will then fold
+// the ar.pfs-save vreg straight into the AR_PFS physreg (yielding the
+// nonsensical 'alloc ar.pfs = ar.pfs'), because the vreg and physreg share a
+// class.  Giving ar.pfs its own class makes the 'mov ar.pfs = rN' restore a
+// cross-class copy the coalescer cannot join, so the save register stays a
+// real scratch GR.
+def AR : RegisterClass<"IA64", [i64], 64, (add AR_PFS)>;
 
 
 // these are the scratch (+stacked) FP registers
