@@ -38,6 +38,16 @@ include "IA64InstrFormats.td"
 def retflag : SDNode<"IA64ISD::RET_FLAG", SDTNone,
                      [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
 
+// Call-sequence markers are target-independent nodes (ISD::CALLSEQ_START/END)
+// but each target declares them with its own operand type profile. IA-64 frame
+// amounts are i64. ADJUSTCALLSTACKDOWN/UP select directly from these.
+def SDT_IA64CallSeqStart : SDCallSeqStart<[SDTCisVT<0, i64>, SDTCisVT<1, i64>]>;
+def SDT_IA64CallSeqEnd   : SDCallSeqEnd<[SDTCisVT<0, i64>, SDTCisVT<1, i64>]>;
+def callseq_start : SDNode<"ISD::CALLSEQ_START", SDT_IA64CallSeqStart,
+                           [SDNPHasChain, SDNPOutGlue]>;
+def callseq_end : SDNode<"ISD::CALLSEQ_END", SDT_IA64CallSeqEnd,
+                         [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
+
 //===----------------------------------------------------------------------===//
 // Instruction types
 //===----------------------------------------------------------------------===//
@@ -363,10 +373,22 @@ let Constraints = "$src2 = $dst" in {
 // tablegen support
 
 def IUSE : PseudoInstIA64<(outs), (ins variable_ops), "// IUSE">;
-def ADJUSTCALLSTACKUP : PseudoInstIA64<(outs), (ins variable_ops),
-                                        "// ADJUSTCALLSTACKUP">;
-def ADJUSTCALLSTACKDOWN : PseudoInstIA64<(outs), (ins variable_ops),
-                                         "// ADJUSTCALLSTACKDOWN">;
+// Call-frame setup/teardown. Selected directly from callseq_start/callseq_end
+// via these patterns (the modern idiom, as on Sparc) so TableGen threads the
+// chain and glue for us -- the pre-removal backend hand-selected these, which
+// predates the two-operand + glue callseq_end shape. They def/use sp (r12);
+// IA64FrameLowering::eliminateCallFramePseudoInstr reads the byte count from
+// operand 0 and turns them into sp adjustments (or erases them).
+let Defs = [r12], Uses = [r12] in {
+def ADJUSTCALLSTACKDOWN : PseudoInstIA64_DAG<(outs),
+                          (ins i64imm:$amt1, i64imm:$amt2),
+                          "// ADJUSTCALLSTACKDOWN",
+                          [(callseq_start timm:$amt1, timm:$amt2)]>;
+def ADJUSTCALLSTACKUP : PseudoInstIA64_DAG<(outs),
+                        (ins i64imm:$amt1, i64imm:$amt2),
+                        "// ADJUSTCALLSTACKUP",
+                        [(callseq_end timm:$amt1, timm:$amt2)]>;
+}
 def PSEUDO_ALLOC : PseudoInstIA64<(outs), (ins GR:$foo), "// PSEUDO_ALLOC">;
 
 def ALLOC : AForm<0x03, 0x0b,
