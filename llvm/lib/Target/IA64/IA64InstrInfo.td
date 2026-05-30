@@ -104,6 +104,12 @@ def immSExt22 : PatLeaf<(i64 imm), [{
 // imm64 - matches any 64-bit constant; the unpredicated 'movl' catch-all.
 def imm64 : PatLeaf<(i64 imm)>;
 
+// is32ones - the constant 0x00000000FFFFFFFF, the mask of a 32->64 zero-extend
+// ('zxt4'). Lets the i32->i64 zero-extend select to a single instruction.
+def is32ones : PatLeaf<(i64 imm), [{
+  return ((uint64_t)N->getZExtValue() == 0x00000000FFFFFFFFULL);
+}]>;
+
 //===----------------------------------------------------------------------===//
 // Instructions
 //===----------------------------------------------------------------------===//
@@ -156,7 +162,8 @@ def ADDL_EA : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, calltarget:$i
            "addl $dst = $imm, $src1", []>, isA;
 
 def SUB  : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, GR:$src2),
-           "sub $dst = $src1, $src2", []>, isA;
+           "sub $dst = $src1, $src2",
+           [(set GR:$dst, (sub GR:$src1, GR:$src2))]>, isA;
 
 def SUB1 : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, GR:$src2),
            "sub $dst = $src1, $src2, 1", []>, isA;
@@ -177,17 +184,17 @@ def TPCMPIMM8NE : AForm<0x03, 0x0b,
 
 // normal sign/zero-extends
 def SXT1 : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src), "sxt1 $dst = $src",
-           []>, isI;
+           [(set GR:$dst, (sext_inreg GR:$src, i8))]>, isI;
 def ZXT1 : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src), "zxt1 $dst = $src",
-           []>, isI;
+           [(set GR:$dst, (and GR:$src, 255))]>, isI;
 def SXT2 : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src), "sxt2 $dst = $src",
-           []>, isI;
+           [(set GR:$dst, (sext_inreg GR:$src, i16))]>, isI;
 def ZXT2 : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src), "zxt2 $dst = $src",
-           []>, isI;
+           [(set GR:$dst, (and GR:$src, 65535))]>, isI;
 def SXT4 : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src), "sxt4 $dst = $src",
-           []>, isI;
+           [(set GR:$dst, (sext_inreg GR:$src, i32))]>, isI;
 def ZXT4 : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src), "zxt4 $dst = $src",
-           []>, isI;
+           [(set GR:$dst, (and GR:$src, is32ones))]>, isI;
 
 // fixme: shrs vs shru?
 def MIX1L : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, GR:$src2),
@@ -216,12 +223,14 @@ def XMAHUD : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$
   "xma.hu $dst = $src1, $src2, $src3", []>, isF;
 
 def AND   : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, GR:$src2),
-          "and $dst = $src1, $src2", []>, isA;
+          "and $dst = $src1, $src2",
+          [(set GR:$dst, (and GR:$src1, GR:$src2))]>, isA;
 def ANDCM : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, GR:$src2),
           "andcm $dst = $src1, $src2", []>, isA;
 // TODO: and/andcm/or/xor/add/sub/shift immediate forms
 def OR    : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, GR:$src2),
-          "or $dst = $src1, $src2", []>, isA;
+          "or $dst = $src1, $src2",
+          [(set GR:$dst, (or GR:$src1, GR:$src2))]>, isA;
 
 def pOR   : AForm<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, GR:$src2, PR:$qp),
           "($qp) or $dst = $src1, $src2">, isA;
@@ -282,19 +291,23 @@ let Constraints = "$bogus = $dst" in {
 }
 
 def XOR   : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, GR:$src2),
-          "xor $dst = $src1, $src2", []>, isA;
+          "xor $dst = $src1, $src2",
+          [(set GR:$dst, (xor GR:$src1, GR:$src2))]>, isA;
 
 def SHLADD: AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1,s64imm:$imm,GR:$src2),
           "shladd $dst = $src1, $imm, $src2", []>, isA;
 
 def SHL   : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, GR:$src2),
-          "shl $dst = $src1, $src2", []>, isI;
+          "shl $dst = $src1, $src2",
+          [(set GR:$dst, (shl GR:$src1, GR:$src2))]>, isI;
 
 def SHRU  : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, GR:$src2),
-          "shr.u $dst = $src1, $src2", []>, isI;
+          "shr.u $dst = $src1, $src2",
+          [(set GR:$dst, (srl GR:$src1, GR:$src2))]>, isI;
 
 def SHRS  : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, GR:$src2),
-          "shr $dst = $src1, $src2", []>, isI;
+          "shr $dst = $src1, $src2",
+          [(set GR:$dst, (sra GR:$src1, GR:$src2))]>, isI;
 
 def MOV : AForm<0x03, 0x0b, (outs GR:$dst), (ins GR:$src), "mov $dst = $src">, isA;
 // Restore ar.pfs from a general register: 'mov ar.pfs = rN'. ar.pfs lives in
