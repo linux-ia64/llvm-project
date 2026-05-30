@@ -8,10 +8,11 @@
 //
 // This file implements the IA64TargetLowering class.
 //
-// Scope note (Stage 1): only the leaf-function path needed by plus.ll is
-// implemented — LowerFormalArguments and LowerReturn. LowerCall (and the
-// varargs / TLS / FP-conversion custom lowering the pre-removal backend had)
-// are deferred; calls report a fatal error rather than miscompile.
+// Scope note: LowerFormalArguments / LowerReturn (Stage 1) and LowerCall
+// (Stage C) are implemented for the integer, direct-call ABI that fib needs:
+// args in r32-r39 (incoming) / out0-out7 (outgoing), return in r8, gp/sp/rp
+// saved around calls. Indirect / function-descriptor calls, >8 or FP/aggregate
+// arguments, varargs and TLS remain deferred.
 //
 //===----------------------------------------------------------------------===//
 
@@ -188,10 +189,150 @@ SDValue IA64TargetLowering::LowerFormalArguments(
   return Chain;
 }
 
-SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo & /*CLI*/,
-                                      SmallVectorImpl<SDValue> & /*InVals*/) const {
-  report_fatal_error("IA64: function calls are not yet supported "
-                     "(Stage 1 targets leaf functions only)");
+SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
+                                      SmallVectorImpl<SDValue> &InVals) const {
+  SelectionDAG &DAG = CLI.DAG;
+  SDLoc &dl = CLI.DL;
+  SmallVectorImpl<ISD::OutputArg> &Outs = CLI.Outs;
+  SmallVectorImpl<SDValue> &OutVals = CLI.OutVals;
+  SmallVectorImpl<ISD::InputArg> &Ins = CLI.Ins;
+  SDValue Chain = CLI.Chain;
+  SDValue Callee = CLI.Callee;
+  CallingConv::ID CallConv = CLI.CallConv;
+  bool isVarArg = CLI.IsVarArg;
+  MachineFunction &MF = DAG.getMachineFunction();
+
+  // No tail calls or varargs yet (fib needs neither).
+  CLI.IsTailCall = false;
+  if (isVarArg)
+    report_fatal_error("IA64: variadic calls are not yet supported");
+
+  // Assign the outgoing arguments to out0-out7 / F8-F15 (caller convention).
+  SmallVector<CCValAssign, 16> ArgLocs;
+  CCState CCInfo(CallConv, isVarArg, MF, ArgLocs, *DAG.getContext());
+  CCInfo.AnalyzeCallOperands(Outs, CC_IA64_Call);
+
+  // A 16-byte scratch area sits at the bottom of the outgoing frame; keep the
+  // whole thing 16-byte aligned.
+  unsigned NumBytes = (CCInfo.getStackSize() + 16 + 15) & ~15u;
+
+  // Record how many output registers this call needs; the prologue 'alloc'
+  // sizes its output region from the max over all of the function's calls.
+  // (FP arguments that shadow an out slot are out of scope; fib passes only
+  // integers, so this is just the argument count.)
+  unsigned NumOutRegs = std::min<unsigned>(Outs.size(), 8);
+  IA64FunctionInfo *FInfo = MF.getInfo<IA64FunctionInfo>();
+  FInfo->OutRegsUsed = std::max(FInfo->OutRegsUsed, NumOutRegs);
+
+  Chain = DAG.getCALLSEQ_START(Chain, NumBytes, 0, dl);
+
+  // Collect the (out-register, value) pairs to copy in just before the call.
+  SmallVector<std::pair<unsigned, SDValue>, 8> RegsToPass;
+  for (unsigned i = 0, e = ArgLocs.size(); i != e; ++i) {
+    CCValAssign &VA = ArgLocs[i];
+    SDValue Arg = OutVals[i];
+
+    switch (VA.getLocInfo()) {
+    case CCValAssign::Full:
+      break;
+    case CCValAssign::SExt:
+      Arg = DAG.getNode(ISD::SIGN_EXTEND, dl, VA.getLocVT(), Arg);
+      break;
+    case CCValAssign::ZExt:
+      Arg = DAG.getNode(ISD::ZERO_EXTEND, dl, VA.getLocVT(), Arg);
+      break;
+    case CCValAssign::AExt:
+      Arg = DAG.getNode(ISD::ANY_EXTEND, dl, VA.getLocVT(), Arg);
+      break;
+    case CCValAssign::FPExt:
+      Arg = DAG.getNode(ISD::FP_EXTEND, dl, VA.getLocVT(), Arg);
+      break;
+    default:
+      report_fatal_error("IA64: unhandled argument CCValAssign");
+    }
+
+    if (!VA.isRegLoc())
+      report_fatal_error("IA64: stack (>8) call arguments are not yet supported");
+    RegsToPass.push_back(std::make_pair(VA.getLocReg(), Arg));
+  }
+
+  // Save gp/sp/rp around the call. rp (b0) is the hard requirement -- br.call
+  // overwrites it, so a non-leaf function must preserve its own return pointer;
+  // gp/sp are saved conservatively. These reads must precede the call and the
+  // restores must follow it, so the whole save -> args -> call -> restore
+  // sequence is tied together with glue (note: rp is deliberately *not* in the
+  // BRCALL clobber list, so glue, not the clobber set, is what orders it). The
+  // save vregs are live across the call and therefore land in RSE locals.
+  // Use the glue-carrying getCopyFromReg overload even for the first save (with
+  // a null input glue): it still gives the node a glue *result* to start the
+  // chain. The plain 4-operand form has no glue result, so reading getValue(2)
+  // off it would be out of range.
+  SDValue InGlue;
+  SDValue GPSave = DAG.getCopyFromReg(Chain, dl, IA64::r1, MVT::i64, InGlue);
+  Chain = GPSave.getValue(1);
+  InGlue = GPSave.getValue(2);
+  SDValue SPSave = DAG.getCopyFromReg(Chain, dl, IA64::r12, MVT::i64, InGlue);
+  Chain = SPSave.getValue(1);
+  InGlue = SPSave.getValue(2);
+  SDValue RPSave = DAG.getCopyFromReg(Chain, dl, IA64::rp, MVT::i64, InGlue);
+  Chain = RPSave.getValue(1);
+  InGlue = RPSave.getValue(2);
+
+  // Copy the outgoing arguments into their out registers, glued before the call.
+  for (auto &R : RegsToPass) {
+    Chain = DAG.getCopyToReg(Chain, dl, R.first, R.second, InGlue);
+    InGlue = Chain.getValue(1);
+  }
+
+  // Make a direct callee a target node so the generic selector leaves it alone;
+  // the IA64ISD::BRCALL selection consumes it as the br.call target. (Indirect
+  // / function-descriptor calls are deferred.)
+  if (GlobalAddressSDNode *G = dyn_cast<GlobalAddressSDNode>(Callee))
+    Callee = DAG.getTargetGlobalAddress(G->getGlobal(), dl, MVT::i64);
+  else if (ExternalSymbolSDNode *E = dyn_cast<ExternalSymbolSDNode>(Callee))
+    Callee = DAG.getTargetExternalSymbol(E->getSymbol(), MVT::i64);
+
+  // Emit the call.
+  SDVTList NodeTys = DAG.getVTList(MVT::Other, MVT::Glue);
+  SmallVector<SDValue, 4> Ops = {Chain, Callee};
+  if (InGlue.getNode())
+    Ops.push_back(InGlue);
+  Chain = DAG.getNode(IA64ISD::BRCALL, dl, NodeTys, Ops);
+  InGlue = Chain.getValue(1);
+
+  // Restore gp/sp/rp after the call.
+  Chain = DAG.getCopyToReg(Chain, dl, IA64::r1, GPSave, InGlue);
+  InGlue = Chain.getValue(1);
+  Chain = DAG.getCopyToReg(Chain, dl, IA64::r12, SPSave, InGlue);
+  InGlue = Chain.getValue(1);
+  Chain = DAG.getCopyToReg(Chain, dl, IA64::rp, RPSave, InGlue);
+  InGlue = Chain.getValue(1);
+
+  Chain = DAG.getCALLSEQ_END(Chain, NumBytes, 0, InGlue, dl);
+  InGlue = Chain.getValue(1);
+
+  // Read the return value(s) out of r8 / F8, narrowing back to the declared type.
+  SmallVector<CCValAssign, 16> RVLocs;
+  CCState RVInfo(CallConv, isVarArg, MF, RVLocs, *DAG.getContext());
+  RVInfo.AnalyzeCallResult(Ins, RetCC_IA64);
+  for (unsigned i = 0, e = RVLocs.size(); i != e; ++i) {
+    CCValAssign &VA = RVLocs[i];
+    SDValue Val =
+        DAG.getCopyFromReg(Chain, dl, VA.getLocReg(), VA.getLocVT(), InGlue);
+    Chain = Val.getValue(1);
+    InGlue = Val.getValue(2);
+
+    if (VA.getLocVT() != VA.getValVT()) {
+      if (VA.getLocVT().isInteger())
+        Val = DAG.getNode(ISD::TRUNCATE, dl, VA.getValVT(), Val);
+      else
+        Val = DAG.getNode(ISD::FP_ROUND, dl, VA.getValVT(), Val,
+                          DAG.getIntPtrConstant(0, dl, /*isTarget=*/true));
+    }
+    InVals.push_back(Val);
+  }
+
+  return Chain;
 }
 
 SDValue IA64TargetLowering::LowerReturn(
