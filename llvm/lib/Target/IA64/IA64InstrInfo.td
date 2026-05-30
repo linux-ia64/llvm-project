@@ -247,25 +247,35 @@ def pOR   : AForm<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, GR:$src2, PR:$qp),
 // the following are all a bit unfortunate: we throw away the complement
 // of the compare!
 def CMPEQ : AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins GR:$src1, GR:$src2),
-          "cmp.eq $dst, p0 = $src1, $src2", []>, isA;
+          "cmp.eq $dst, p0 = $src1, $src2",
+          [(set PR:$dst, (setcc GR:$src1, GR:$src2, SETEQ))]>, isA;
 def CMPGT : AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins GR:$src1, GR:$src2),
-          "cmp.gt $dst, p0 = $src1, $src2", []>, isA;
+          "cmp.gt $dst, p0 = $src1, $src2",
+          [(set PR:$dst, (setcc GR:$src1, GR:$src2, SETGT))]>, isA;
 def CMPGE : AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins GR:$src1, GR:$src2),
-          "cmp.ge $dst, p0 = $src1, $src2", []>, isA;
+          "cmp.ge $dst, p0 = $src1, $src2",
+          [(set PR:$dst, (setcc GR:$src1, GR:$src2, SETGE))]>, isA;
 def CMPLT : AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins GR:$src1, GR:$src2),
-          "cmp.lt $dst, p0 = $src1, $src2", []>, isA;
+          "cmp.lt $dst, p0 = $src1, $src2",
+          [(set PR:$dst, (setcc GR:$src1, GR:$src2, SETLT))]>, isA;
 def CMPLE : AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins GR:$src1, GR:$src2),
-          "cmp.le $dst, p0 = $src1, $src2", []>, isA;
+          "cmp.le $dst, p0 = $src1, $src2",
+          [(set PR:$dst, (setcc GR:$src1, GR:$src2, SETLE))]>, isA;
 def CMPNE : AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins GR:$src1, GR:$src2),
-          "cmp.ne $dst, p0 = $src1, $src2", []>, isA;
+          "cmp.ne $dst, p0 = $src1, $src2",
+          [(set PR:$dst, (setcc GR:$src1, GR:$src2, SETNE))]>, isA;
 def CMPLTU: AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins GR:$src1, GR:$src2),
-          "cmp.ltu $dst, p0 = $src1, $src2", []>, isA;
+          "cmp.ltu $dst, p0 = $src1, $src2",
+          [(set PR:$dst, (setcc GR:$src1, GR:$src2, SETULT))]>, isA;
 def CMPGTU: AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins GR:$src1, GR:$src2),
-          "cmp.gtu $dst, p0 = $src1, $src2", []>, isA;
+          "cmp.gtu $dst, p0 = $src1, $src2",
+          [(set PR:$dst, (setcc GR:$src1, GR:$src2, SETUGT))]>, isA;
 def CMPLEU: AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins GR:$src1, GR:$src2),
-          "cmp.leu $dst, p0 = $src1, $src2", []>, isA;
+          "cmp.leu $dst, p0 = $src1, $src2",
+          [(set PR:$dst, (setcc GR:$src1, GR:$src2, SETULE))]>, isA;
 def CMPGEU: AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins GR:$src1, GR:$src2),
-          "cmp.geu $dst, p0 = $src1, $src2", []>, isA;
+          "cmp.geu $dst, p0 = $src1, $src2",
+          [(set PR:$dst, (setcc GR:$src1, GR:$src2, SETUGE))]>, isA;
 
 // and we do the whole thing again for FP compares!
 def FCMPEQ : AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins FP:$src1, FP:$src2),
