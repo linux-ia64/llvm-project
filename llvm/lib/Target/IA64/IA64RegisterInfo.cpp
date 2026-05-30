@@ -46,6 +46,13 @@ BitVector IA64RegisterInfo::getReservedRegs(const MachineFunction &MF) const {
   Reserved.set(IA64::r22); // reserved as an address-calculation scratch
   Reserved.set(IA64::rp);  // return pointer (b0)
 
+  // F0 and F1 are the architectural fixed FP constants +0.0 and +1.0; they are
+  // members of the FP class only so they can be named as explicit operands
+  // (e.g. F0 is the addend in the xma-based integer-multiply sequence). They
+  // must never be allocated as scratch, or the constant they hold is clobbered.
+  Reserved.set(IA64::F0);  // fixed +0.0
+  Reserved.set(IA64::F1);  // fixed +1.0
+
   // The output registers (out0-out7) are an alias for the top of the stacked
   // register frame that 'alloc' carves out for passing arguments to callees;
   // they are not freely allocatable. The pre-removal backend hid them from the
