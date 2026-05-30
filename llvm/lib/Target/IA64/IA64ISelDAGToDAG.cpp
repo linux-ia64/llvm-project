@@ -12,9 +12,10 @@
 // The pre-removal selector hand-selected a great deal (FP divide expansion, the
 // BRCALL call hack, manual load/store/branch handling). Most arithmetic now
 // flows through the tablegen-generated matcher (SelectCode); the cases that
-// cannot be expressed as patterns are hand-selected here, as the pre-removal
-// backend did: FrameIndex (Stage 1), and the branches BR/BRCOND (Stage C),
-// whose target is an i64imm rather than a tablegen 'bb' operand.
+// cannot be (or were not) expressed as patterns are hand-selected here, as the
+// pre-removal backend did: FrameIndex (Stage 1); the branches BR/BRCOND, whose
+// target is an i64imm rather than a tablegen 'bb' operand; the IA64ISD::BRCALL
+// call node; and loads/stores, dispatched on the memory type (Stage C).
 //
 //===----------------------------------------------------------------------===//
 
@@ -127,6 +128,62 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
     if (InGlue.getNode())
       Ops.push_back(InGlue);
     CurDAG->SelectNodeTo(N, Opc, MVT::Other, MVT::Glue, Ops);
+    return;
+  }
+
+  case ISD::LOAD: {
+    // Select by the memory type. IA-64 narrow integer loads zero-extend into
+    // the 64-bit GR, which matches zext/any-extend loads (fib's only kind); a
+    // true sext load would need a following sxt and is deferred. The address is
+    // a single register; a FrameIndex base is materialized by the FrameIndex
+    // case above and resolved by eliminateFrameIndex. (i1/bool loads, with the
+    // pre-removal compare-against-zero trick, are also deferred.)
+    LoadSDNode *LD = cast<LoadSDNode>(N);
+    SDValue Chain = LD->getChain();
+    SDValue Address = LD->getBasePtr();
+    unsigned Opc;
+    switch (LD->getMemoryVT().getSimpleVT().SimpleTy) {
+    case MVT::i8:  Opc = IA64::LD1;  break;
+    case MVT::i16: Opc = IA64::LD2;  break;
+    case MVT::i32: Opc = IA64::LD4;  break;
+    case MVT::i64: Opc = IA64::LD8;  break;
+    case MVT::f32: Opc = IA64::LDF4; break;
+    case MVT::f64: Opc = IA64::LDF8; break;
+    default:
+      report_fatal_error("IA64: cannot select a load of this type");
+    }
+    CurDAG->SelectNodeTo(N, Opc, N->getValueType(0), MVT::Other, Address, Chain);
+    return;
+  }
+
+  case ISD::STORE: {
+    // Operands: (chain, value, address). A non-truncating store picks ST8/STF8
+    // by the value type; a truncating store picks ST1/2/4 (or STF4) by the
+    // memory type. The address register is handled as for loads above.
+    StoreSDNode *ST = cast<StoreSDNode>(N);
+    SDValue Chain = ST->getChain();
+    SDValue Value = ST->getValue();
+    SDValue Address = ST->getBasePtr();
+    unsigned Opc;
+    if (!ST->isTruncatingStore()) {
+      switch (Value.getValueType().getSimpleVT().SimpleTy) {
+      case MVT::i64: Opc = IA64::ST8;  break;
+      case MVT::f64: Opc = IA64::STF8; break;
+      default:
+        report_fatal_error("IA64: cannot select a store of this type");
+      }
+    } else {
+      switch (ST->getMemoryVT().getSimpleVT().SimpleTy) {
+      case MVT::i8:  Opc = IA64::ST1;  break;
+      case MVT::i16: Opc = IA64::ST2;  break;
+      case MVT::i32: Opc = IA64::ST4;  break;
+      case MVT::f32: Opc = IA64::STF4; break;
+      default:
+        report_fatal_error("IA64: cannot select a truncating store of this type");
+      }
+    }
+    // ST* operands are (dstPtr, value): address first, then the stored value.
+    CurDAG->SelectNodeTo(N, Opc, MVT::Other, Address, Value, Chain);
     return;
   }
   }
