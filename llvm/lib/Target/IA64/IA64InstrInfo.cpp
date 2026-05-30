@@ -120,14 +120,143 @@ void IA64InstrInfo::loadRegFromStackSlot(MachineBasicBlock &MBB,
   }
 }
 
+// The two branch forms our selector emits: 'BRL_NOTCALL' is the unconditional
+// '(p0) brl.cond TBB' (operand 0 = target block); 'BRLCOND_NOTCALL' is the
+// conditional '($qp) brl.cond TBB' (operand 0 = predicate, operand 1 = target).
+static bool isUncondBranchOpcode(unsigned Opc) {
+  return Opc == IA64::BRL_NOTCALL;
+}
+static bool isCondBranchOpcode(unsigned Opc) {
+  return Opc == IA64::BRLCOND_NOTCALL;
+}
+
+// The branch condition for IA-64 is the single qualifying predicate register.
+static void parseCondBranch(MachineInstr *LastInst, MachineBasicBlock *&TBB,
+                            SmallVectorImpl<MachineOperand> &Cond) {
+  Cond.push_back(LastInst->getOperand(0)); // the predicate
+  TBB = LastInst->getOperand(1).getMBB();
+}
+
+bool IA64InstrInfo::analyzeBranch(MachineBasicBlock &MBB,
+                                  MachineBasicBlock *&TBB,
+                                  MachineBasicBlock *&FBB,
+                                  SmallVectorImpl<MachineOperand> &Cond,
+                                  bool AllowModify) const {
+  MachineBasicBlock::iterator I = MBB.getLastNonDebugInstr();
+  if (I == MBB.end())
+    return false; // empty block, falls through
+
+  if (!isUnpredicatedTerminator(*I))
+    return false; // last instruction isn't a terminator, falls through
+
+  MachineInstr *LastInst = &*I;
+  unsigned LastOpc = LastInst->getOpcode();
+
+  // Just one terminator.
+  if (I == MBB.begin() || !isUnpredicatedTerminator(*--I)) {
+    if (isUncondBranchOpcode(LastOpc)) {
+      TBB = LastInst->getOperand(0).getMBB();
+      return false;
+    }
+    if (isCondBranchOpcode(LastOpc)) {
+      parseCondBranch(LastInst, TBB, Cond); // ends with fall-through cond branch
+      return false;
+    }
+    return true; // some other terminator (e.g. indirect branch): can't analyze
+  }
+
+  MachineInstr *SecondLastInst = &*I;
+  unsigned SecondLastOpc = SecondLastInst->getOpcode();
+
+  // If the block ends with two or more unconditional branches, the trailing
+  // ones are dead; drop them when allowed.
+  if (AllowModify && isUncondBranchOpcode(LastOpc)) {
+    while (isUncondBranchOpcode(SecondLastOpc)) {
+      LastInst->eraseFromParent();
+      LastInst = SecondLastInst;
+      LastOpc = LastInst->getOpcode();
+      if (I == MBB.begin() || !isUnpredicatedTerminator(*--I)) {
+        TBB = LastInst->getOperand(0).getMBB();
+        return false;
+      }
+      SecondLastInst = &*I;
+      SecondLastOpc = SecondLastInst->getOpcode();
+    }
+  }
+
+  // Three terminators: bail out.
+  if (I != MBB.begin() && isUnpredicatedTerminator(*--I))
+    return true;
+
+  // Conditional branch to TBB followed by an unconditional branch to FBB.
+  if (isCondBranchOpcode(SecondLastOpc) && isUncondBranchOpcode(LastOpc)) {
+    parseCondBranch(SecondLastInst, TBB, Cond);
+    FBB = LastInst->getOperand(0).getMBB();
+    return false;
+  }
+
+  // Two unconditional branches: the second is unreachable.
+  if (isUncondBranchOpcode(SecondLastOpc) && isUncondBranchOpcode(LastOpc)) {
+    TBB = SecondLastInst->getOperand(0).getMBB();
+    return false;
+  }
+
+  return true; // anything else: can't analyze
+}
+
+unsigned IA64InstrInfo::removeBranch(MachineBasicBlock &MBB,
+                                     int *BytesRemoved) const {
+  assert(!BytesRemoved && "code size not handled");
+  MachineBasicBlock::iterator I = MBB.end();
+  unsigned Count = 0;
+  while (I != MBB.begin()) {
+    --I;
+    if (I->isDebugInstr())
+      continue;
+    if (!isCondBranchOpcode(I->getOpcode()) &&
+        !isUncondBranchOpcode(I->getOpcode()))
+      break; // not a branch
+    I->eraseFromParent();
+    I = MBB.end();
+    ++Count;
+  }
+  return Count;
+}
+
 unsigned IA64InstrInfo::insertBranch(MachineBasicBlock &MBB,
                                      MachineBasicBlock *TBB,
                                      MachineBasicBlock *FBB,
                                      ArrayRef<MachineOperand> Cond,
                                      const DebugLoc &DL, int *BytesAdded) const {
   assert(!BytesAdded && "code size not handled");
-  // Can only insert uncond branches so far.
-  assert(Cond.empty() && !FBB && TBB && "Can only handle uncond branches!");
-  BuildMI(&MBB, DL, get(IA64::BRL_NOTCALL)).addMBB(TBB);
-  return 1;
+  assert(TBB && "insertBranch must not be told to insert a fallthrough");
+  assert(Cond.size() <= 1 &&
+         "IA64 branch condition is a single qualifying predicate!");
+
+  if (Cond.empty()) {
+    // Unconditional branch.
+    assert(!FBB && "Unconditional branch with multiple successors!");
+    BuildMI(&MBB, DL, get(IA64::BRL_NOTCALL)).addMBB(TBB);
+    return 1;
+  }
+
+  // Conditional branch '($qp) brl.cond TBB'.
+  BuildMI(&MBB, DL, get(IA64::BRLCOND_NOTCALL)).add(Cond[0]).addMBB(TBB);
+  if (!FBB)
+    return 1;
+
+  // Two-way branch: append the unconditional branch to the false target.
+  BuildMI(&MBB, DL, get(IA64::BRL_NOTCALL)).addMBB(FBB);
+  return 2;
+}
+
+bool IA64InstrInfo::reverseBranchCondition(
+    SmallVectorImpl<MachineOperand> &Cond) const {
+  // The condition is a single qualifying predicate register. Its complement is
+  // not available -- the CMP* instructions discard the complement predicate
+  // (they write 'p0' for it) -- so the condition cannot be reversed in place.
+  // Returning true signals "cannot reverse"; callers fall back accordingly
+  // (e.g. they still remove a redundant fall-through branch, which needs no
+  // reversal).
+  return true;
 }
