@@ -79,6 +79,32 @@ let PrintMethod = "printCallOperand" in
   def calltarget : Operand<i64>;
 
 //===----------------------------------------------------------------------===//
+// Immediate predicates
+//===----------------------------------------------------------------------===//
+
+// The constant-materialization ladder: a 64-bit constant is realized by the
+// cheapest instruction whose signed-immediate field it fits in. The three
+// ranges nest (14 ⊂ 22 ⊂ 64); the AddedComplexity annotations on the
+// materialization patterns below make TableGen pick the narrowest fit.
+
+// immSExt14 - fits a signed 14-bit field (the 'adds' immediate).
+def immSExt14 : PatLeaf<(i64 imm), [{
+  int64_t v = (int64_t)N->getZExtValue();
+  return (v <= 8191 && v >= -8192);
+}]>;
+
+// immSExt22 - fits a signed 22-bit field. 'mov r1 = imm22' is the architectural
+// pseudo-op of 'addl r1 = imm22, r0' (the immediate is sign-extended to 64
+// bits), so a single A-slot instruction covers this range without a full 'movl'.
+def immSExt22 : PatLeaf<(i64 imm), [{
+  int64_t v = (int64_t)N->getZExtValue();
+  return (v < (1 << 21) && v >= -(1 << 21));
+}]>;
+
+// imm64 - matches any 64-bit constant; the unpredicated 'movl' catch-all.
+def imm64 : PatLeaf<(i64 imm)>;
+
+//===----------------------------------------------------------------------===//
 // Instructions
 //===----------------------------------------------------------------------===//
 
@@ -89,11 +115,38 @@ def ADD  : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, GR:$src2),
 def ADD1 : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, GR:$src2),
            "add $dst = $src1, $src2, 1", []>, isA;
 
+// 'adds' (A4) is a register + signed-14-bit-immediate add. Its register
+// operand r3 may be any GR, so it doubles as a general add-immediate.
+let AddedComplexity = 2 in
 def ADDS : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, s14imm:$imm),
-           "adds $dst = $imm, $src1", []>, isA;
+           "adds $dst = $imm, $src1",
+           [(set GR:$dst, (add GR:$src1, immSExt14:$imm))]>, isA;
+
+// 'addl' (A5) carries a wider signed-22-bit immediate, but it pays for those
+// extra bits with a 2-bit register field: its addend MUST be r0-r3 (in practice
+// r2/r3, since r0 is zero and r1 the GP). That restriction is modeled by the
+// GR03 register class on $src1 (see IA64RegisterInfo.td) -- the allocator picks
+// r2/r3 for it (today only r3 is unreserved), inserting a copy when the value
+// lives elsewhere; the unsatisfiable cases never arise because the class itself
+// excludes every other register. Still a real add-immediate like 'adds', just
+// over the narrower addend set.
+let AddedComplexity = 1 in
+def ADDL : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR03:$src1, s22imm:$imm),
+           "addl $dst = $imm, $src1",
+           [(set GR:$dst, (add GR03:$src1, immSExt22:$imm))]>, isA;
 
 def MOVL : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins s64imm:$imm),
-           "movl $dst = $imm", []>, isLX;
+           "movl $dst = $imm",
+           [(set GR:$dst, imm64:$imm)]>, isLX;
+
+// Bare-constant materialization ladder, narrowest-fit first (AddedComplexity
+// 2 > 1 > 0): 'adds rX = imm14, r0' for 14-bit values, 'addl rX = imm22, r0'
+// (the 'mov rX = imm22' pseudo-op; r0 is a valid GR03 addend) for 22-bit, and
+// the unpredicated 'movl' (above) as the catch-all.
+let AddedComplexity = 2 in
+def : Pat<(i64 immSExt14:$imm), (ADDS r0, immSExt14:$imm)>;
+let AddedComplexity = 1 in
+def : Pat<(i64 immSExt22:$imm), (ADDL r0, immSExt22:$imm)>;
 
 def ADDL_GA : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, globaladdress:$imm),
            "addl $dst = $imm, $src1", []>, isA;

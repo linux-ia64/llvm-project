@@ -432,6 +432,16 @@ def GR : RegisterClass<"IA64", [i64], 64,
 // class.  Giving ar.pfs its own class makes the 'mov ar.pfs = rN' restore a
 // cross-class copy the coalescer cannot join, so the save register stays a
 // real scratch GR.
+// 'addl r1 = imm22, r3' (A5 form) spends most of its instruction word on the
+// 22-bit immediate, leaving only a 2-bit field for its source register: that
+// operand must be one of r0-r3. GR03 is that restricted class, used for ADDL's
+// addend. Of its members r0 (zero), r1 (gp) and r2 (predicate-spill scratch)
+// are reserved by getReservedRegs, so the register allocator's only free pick
+// here is r3; r0 is still usable as an explicit operand (the 'addl rX = imm22,
+// r0' = 'mov rX = imm22' constant-materialization form). r3 leads the order so
+// it is preferred for allocation.
+def GR03 : RegisterClass<"IA64", [i64], 64, (add r3, r2, r0, r1)>;
+
 def AR : RegisterClass<"IA64", [i64], 64, (add AR_PFS)>;
 
 
