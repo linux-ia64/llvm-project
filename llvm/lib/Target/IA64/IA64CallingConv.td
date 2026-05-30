@@ -39,6 +39,28 @@ def CC_IA64 : CallingConv<[
 ]>;
 
 //===----------------------------------------------------------------------===//
+// IA-64 C *outgoing* (caller-side) argument convention.
+//
+// A caller places arguments in its output registers out0-out7, which the
+// callee's 'alloc' renames into that callee's incoming r32+. This mirrors
+// CC_IA64 exactly, but targets the out registers instead of r32-r39.
+//===----------------------------------------------------------------------===//
+def CC_IA64_Call : CallingConv<[
+  CCIfType<[i1, i8, i16, i32], CCPromoteToType<i64>>,
+  CCIfType<[f32], CCPromoteToType<f64>>,
+
+  CCIfType<[i64],
+           CCAssignToReg<[out0, out1, out2, out3, out4, out5, out6, out7]>>,
+
+  CCIfType<[f64],
+           CCAssignToRegWithShadow<[F8, F9, F10, F11, F12, F13, F14, F15],
+                                   [out0, out1, out2, out3, out4, out5, out6,
+                                    out7]>>,
+
+  CCIfType<[i64, f64], CCAssignToStack<8, 8>>
+]>;
+
+//===----------------------------------------------------------------------===//
 // IA-64 C return-value convention.
 //===----------------------------------------------------------------------===//
 def RetCC_IA64 : CallingConv<[
