@@ -9,11 +9,12 @@
 // This file defines a pattern matching instruction selector for IA64,
 // converting a legalized DAG into an IA64 DAG.
 //
-// Stage 1 scope: the pre-removal selector hand-selected a great deal (FP
-// divide expansion, the BRCALL call hack, manual load/store/branch handling).
-// None of that is exercised by plus.ll, so almost everything now flows through
-// the tablegen-generated matcher (SelectCode). Only FrameIndex is handled by
-// hand here, as the pre-removal backend did.
+// The pre-removal selector hand-selected a great deal (FP divide expansion, the
+// BRCALL call hack, manual load/store/branch handling). Most arithmetic now
+// flows through the tablegen-generated matcher (SelectCode); the cases that
+// cannot be expressed as patterns are hand-selected here, as the pre-removal
+// backend did: FrameIndex (Stage 1), and the branches BR/BRCOND (Stage C),
+// whose target is an i64imm rather than a tablegen 'bb' operand.
 //
 //===----------------------------------------------------------------------===//
 
@@ -71,6 +72,31 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
     int FI = cast<FrameIndexSDNode>(N)->getIndex();
     SDValue TFI = CurDAG->getTargetFrameIndex(FI, MVT::i64);
     CurDAG->SelectNodeTo(N, IA64::MOV, MVT::i64, TFI);
+    return;
+  }
+
+  case ISD::BR: {
+    // br bb  ->  (p0) brl.cond bb.  The branch instructions carry an i64imm
+    // target operand (not a tablegen 'bb' operand), so they are hand-selected
+    // rather than pattern-matched, as the pre-removal backend did. The
+    // MachineBasicBlock operand is lowered to the block's symbol by
+    // IA64MCInstLower. Operands: (chain, BasicBlock).
+    SDValue Chain = N->getOperand(0);
+    SDValue Target = N->getOperand(1);
+    CurDAG->SelectNodeTo(N, IA64::BRL_NOTCALL, MVT::Other, Target, Chain);
+    return;
+  }
+
+  case ISD::BRCOND: {
+    // brcond p, bb  ->  (p) brl.cond bb.  The conditional branch keeps only the
+    // taken edge; the fall-through to the other successor is a separate ISD::BR
+    // (BR_CC/SELECT_CC stay Expand, so the legalizer hands us setcc + brcond).
+    // Operands: (chain, predicate, BasicBlock).
+    SDValue Chain = N->getOperand(0);
+    SDValue Pred = N->getOperand(1);
+    SDValue Target = N->getOperand(2);
+    CurDAG->SelectNodeTo(N, IA64::BRLCOND_NOTCALL, MVT::Other, Pred, Target,
+                         Chain);
     return;
   }
   }

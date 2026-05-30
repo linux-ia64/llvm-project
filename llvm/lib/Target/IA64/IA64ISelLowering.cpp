@@ -46,8 +46,20 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
   // IA-64 uses SELECT, not SELECT_CC, and has no native BR_CC / jump tables.
   setOperationAction(ISD::BRIND, MVT::Other, Expand);
   setOperationAction(ISD::BR_JT, MVT::Other, Expand);
-  setOperationAction(ISD::BR_CC, MVT::Other, Expand);
-  setOperationAction(ISD::SELECT_CC, MVT::Other, Expand);
+
+  // BR_CC / SELECT_CC must be keyed by the *compare operand* value type, not
+  // MVT::Other. The DAGCombiner folds brcond(setcc) -> br_cc whenever BR_CC is
+  // legal-or-custom for that operand type (DAGCombiner::visitBRCOND), and the
+  // legalizer likewise queries getOperationAction by the operand type. The
+  // pre-removal backend used MVT::Other, which was right for the LLVM 2.6
+  // legalizer but is now a dead no-op -- it left BR_CC/i64 at its Legal default,
+  // so brcond(setcc) got folded into an unselectable br_cc. Marking i64 Expand
+  // keeps brcond(setcc) intact, which is exactly what our setcc (CMP*) patterns
+  // and the hand-selected BRCOND consume. (Sparc keys these by operand type
+  // too; it only differs in Custom-lowering them, having native cc-branches.)
+  // FP (f64) compares/branches stay deferred -- no FCMP patterns yet.
+  setOperationAction(ISD::BR_CC, MVT::i64, Expand);
+  setOperationAction(ISD::SELECT_CC, MVT::i64, Expand);
 
   setOperationAction(ISD::SINT_TO_FP, MVT::i1, Promote);
   setOperationAction(ISD::UINT_TO_FP, MVT::i1, Promote);
