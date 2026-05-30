@@ -222,6 +222,15 @@ def XMAHD : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$s
 def XMAHUD : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$src3),
   "xma.hu $dst = $src1, $src2, $src3", []>, isF;
 
+// IA-64 has no integer multiply unit; 'mul' is synthesized through the FP
+// fixed-point multiply-add (xma) pipe. Move both operands into FP registers
+// (setf.sig), multiply-add with F0 (the fixed +0.0) as the addend so the
+// result is just the product -- xma.l yields the low 64 bits, which is exactly
+// the low-half integer 'mul' -- then move the result back to a GR (getf.sig).
+// (mulhs/mulhu via xma.h/xma.hu are deferred; not needed yet.)
+def : Pat<(mul GR:$src1, GR:$src2),
+          (GETFSIGD (XMALD (SETFSIGD GR:$src1), (SETFSIGD GR:$src2), F0))>;
+
 def AND   : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, GR:$src2),
           "and $dst = $src1, $src2",
           [(set GR:$dst, (and GR:$src1, GR:$src2))]>, isA;
