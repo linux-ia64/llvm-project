@@ -24,6 +24,7 @@
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/CodeGen/SelectionDAGISel.h"
 #include "llvm/CodeGen/SelectionDAGNodes.h"
+#include "llvm/Support/ErrorHandling.h"
 
 using namespace llvm;
 
@@ -97,6 +98,35 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
     SDValue Target = N->getOperand(2);
     CurDAG->SelectNodeTo(N, IA64::BRLCOND_NOTCALL, MVT::Other, Pred, Target,
                          Chain);
+    return;
+  }
+
+  case IA64ISD::BRCALL: {
+    // The call hack: LowerCall builds IA64ISD::BRCALL (chain, callee, glue) and
+    // leaves the callee as a Target{GlobalAddress,ExternalSymbol}. A direct call
+    // selects to 'br.call rp = <target>'. Indirect / function-descriptor calls
+    // (BRCALL_INDIRECT through b6) are deferred -- fib only calls directly.
+    SDValue Chain = N->getOperand(0);
+    SDValue Callee = N->getOperand(1);
+    SDValue InGlue;
+    if (N->getNumOperands() > 2)
+      InGlue = N->getOperand(2);
+
+    unsigned Opc;
+    if (Callee.getOpcode() == ISD::TargetGlobalAddress)
+      Opc = IA64::BRCALL_IPREL_GA;
+    else if (Callee.getOpcode() == ISD::TargetExternalSymbol)
+      Opc = IA64::BRCALL_IPREL_ES;
+    else
+      report_fatal_error("IA64: only direct calls are supported");
+
+    // Machine-node operands: (calltarget, chain, [glue]); results: (chain, glue).
+    SmallVector<SDValue, 3> Ops;
+    Ops.push_back(Callee);
+    Ops.push_back(Chain);
+    if (InGlue.getNode())
+      Ops.push_back(InGlue);
+    CurDAG->SelectNodeTo(N, Opc, MVT::Other, MVT::Glue, Ops);
     return;
   }
   }
