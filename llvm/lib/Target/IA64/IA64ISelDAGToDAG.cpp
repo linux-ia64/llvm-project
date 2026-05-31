@@ -77,6 +77,27 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
     return;
   }
 
+  case ISD::GlobalAddress: {
+    // Materialize a global's address out of the linkage table (GOT), anchored
+    // by gp (r1), transcribing the pre-removal selector:
+    //   addl rX = <sym>, gp ;; ld8 rX = [rX]
+    // The ADDL_GA computes the address of the symbol's GOT slot relative to gp,
+    // and the LD8 loads the symbol's runtime address from it. The GOT slot is
+    // invariant, so the load is chained off the entry node.
+    const GlobalValue *GV = cast<GlobalAddressSDNode>(N)->getGlobal();
+    SDLoc dl(N);
+    SDValue GA = CurDAG->getTargetGlobalAddress(GV, dl, MVT::i64);
+    SDValue Slot = SDValue(
+        CurDAG->getMachineNode(IA64::ADDL_GA, dl, MVT::i64,
+                               CurDAG->getRegister(IA64::r1, MVT::i64), GA),
+        0);
+    SDNode *Ld = CurDAG->getMachineNode(IA64::LD8, dl, MVT::i64, MVT::Other,
+                                        Slot, CurDAG->getEntryNode());
+    ReplaceUses(SDValue(N, 0), SDValue(Ld, 0));
+    CurDAG->RemoveDeadNode(N);
+    return;
+  }
+
   case ISD::BR: {
     // br bb  ->  (p0) brl.cond bb.  The branch instructions carry an i64imm
     // target operand (not a tablegen 'bb' operand), so they are hand-selected
