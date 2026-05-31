@@ -412,10 +412,15 @@ void tools::gnutools::Linker::ConstructJob(Compilation &C, const JobAction &JA,
       }
       if (P.empty()) {
         const char *crtbegin;
+        bool IsIA64 = ToolChain.getTriple().getArch() == llvm::Triple::ia64;
         if (Args.hasArg(options::OPT_shared))
           crtbegin = isAndroid ? "crtbegin_so.o" : "crtbeginS.o";
         else if (IsStatic)
-          crtbegin = isAndroid ? "crtbegin_static.o" : "crtbeginT.o";
+          // IA-64 toolchains don't ship a static-specific crtbeginT.o; the
+          // plain crtbegin.o serves static links too.
+          crtbegin = isAndroid    ? "crtbegin_static.o"
+                     : IsIA64      ? "crtbegin.o"
+                                   : "crtbeginT.o";
         else if (IsPIE || IsStaticPIE)
           crtbegin = isAndroid ? "crtbegin_dynamic.o" : "crtbeginS.o";
         else
