@@ -219,6 +219,9 @@ static StringRef getOSLibDir(const llvm::Triple &Triple, const ArgList &Args) {
     }
   }
 
+  if (Triple.getArch() == llvm::Triple::ia64)
+    return "lib";
+
   return Triple.isArch32Bit() ? "lib" : "lib64";
 }
 
