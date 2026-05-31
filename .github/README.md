@@ -8,33 +8,53 @@ infrastructure.
 *Disclaimer: The majority of both code and text in the repository was generated
 by Claude models (Opus 4.8, Sonnet 4.6).*
 
+## Getting the source code
+
+You can clone this repository, or, if you want to save disk space, you can
+download it in .tar.gz format from GitHub.
+
+The tarball is under 300MB. Extract the necessary parts with the following
+command:
+
+```sh
+tar --exclude=llvm-project-ia64-restoration/{llvm,clang,libc}/tests \
+    -xvzf ia64-restoration.tar.gz \
+    llvm-project-ia64-restoration/{cmake,llvm,clang,libc,third-party/siphash}
+```
+
+This will extract to around 1.7GB of files.
+
 ## Building
 
 Requires CMake, Ninja, and a C++17 compiler. The IA-64 target is experimental.
-Sparc is included as the reference backend used for development, you can leave
--DLLVM_TARGETS_TO_BUILD empty to speed up build (untested).
+
+For testing and development of the IA-64 backend, the following command is
+recommended:
 
 ```sh
 mkdir build-llvm && cd build-llvm
-cmake ../llvm -GNinja \
-    -DLLVM_TARGETS_TO_BUILD=Sparc \
+cmake ../llvm-project-ia64-restoration/llvm -GNinja \
+    -DLLVM_TARGETS_TO_BUILD= \
     -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=IA64 \
     -DCMAKE_BUILD_TYPE=Debug \
     -DBUILD_SHARED_LIBS=On \
-    -DLLVM_ENABLE_PROJECTS=clang
-ninja
+    -DLLVM_ENABLE_PROJECTS=clang \
+    -DLLVM_INCLUDE_TESTS=OFF \
+    -DCLANG_INCLUDE_TESTS=OFF \
+    -DLLVM_INCLUDE_BENCHMARKS=OFF
+ninja llc clang
 ```
 
-For faster iteration, build only the tools you need (untested):
+As the toolchain is still unstable, we recommend building with Debug, but you
+can also build Release, especially if you are short on disk space.
 
-```sh
-ninja llc llvm-as clang
-```
+Optionally, you can enable tests by omitting the last three lines, or build
+all LLVM/Clang tools by omitting the "llc clang" part of the ninja command.
 
 Verify the target is registered:
 
 ```sh
-./bin/llc --version   # should list "ia64" under experimental targets
+./bin/llc --version   # should list "ia64" under targets
 ```
 
 ## Using the Backend
