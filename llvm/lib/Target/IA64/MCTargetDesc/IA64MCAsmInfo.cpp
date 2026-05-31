@@ -14,10 +14,23 @@
 //===----------------------------------------------------------------------===//
 
 #include "IA64MCAsmInfo.h"
+#include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCTargetOptions.h"
+#include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/Triple.h"
 
 using namespace llvm;
+
+StringRef IA64::getSpecifierName(uint16_t S) {
+  switch (S) {
+  case IA64::S_None:
+    return {};
+  case IA64::S_LTOFF:
+    return "ltoff";
+  }
+  llvm_unreachable("Unhandled IA64 relocation specifier");
+}
 
 void IA64MCAsmInfo::anchor() {}
 
@@ -38,4 +51,17 @@ IA64MCAsmInfo::IA64MCAsmInfo(const Triple &TheTriple,
 
   ZeroDirective = "\t.skip\t";
   AsciiDirective = "\tstring\t";
+}
+
+// Print a relocation specifier as "@name(subexpr)", the form GNU 'as' for
+// IA-64 expects (e.g. "@ltoff(.L.str)"). Mirrors SparcELFMCAsmInfo, which uses
+// the "%name(...)" syntax.
+void IA64MCAsmInfo::printSpecifierExpr(raw_ostream &OS,
+                                       const MCSpecifierExpr &Expr) const {
+  StringRef S = IA64::getSpecifierName(Expr.getSpecifier());
+  if (!S.empty())
+    OS << '@' << S << '(';
+  printExpr(OS, *Expr.getSubExpr());
+  if (!S.empty())
+    OS << ')';
 }

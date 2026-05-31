@@ -21,6 +21,7 @@
 
 #include "IA64.h"
 #include "IA64ISelLowering.h"
+#include "MCTargetDesc/IA64MCAsmInfo.h"
 #include "MCTargetDesc/IA64MCTargetDesc.h"
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/CodeGen/SelectionDAGISel.h"
@@ -86,7 +87,11 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
     // invariant, so the load is chained off the entry node.
     const GlobalValue *GV = cast<GlobalAddressSDNode>(N)->getGlobal();
     SDLoc dl(N);
-    SDValue GA = CurDAG->getTargetGlobalAddress(GV, dl, MVT::i64);
+    // Tag the symbol with the @ltoff specifier (carried on the target flags);
+    // IA64MCInstLower turns it into the printed "@ltoff(sym)" so gas builds the
+    // GOT entry the LD8 below reads.
+    SDValue GA = CurDAG->getTargetGlobalAddress(GV, dl, MVT::i64, /*offset=*/0,
+                                                IA64::S_LTOFF);
     SDValue Slot = SDValue(
         CurDAG->getMachineNode(IA64::ADDL_GA, dl, MVT::i64,
                                CurDAG->getRegister(IA64::r1, MVT::i64), GA),

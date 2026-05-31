@@ -15,12 +15,32 @@
 #ifndef LLVM_LIB_TARGET_IA64_MCTARGETDESC_IA64MCASMINFO_H
 #define LLVM_LIB_TARGET_IA64_MCTARGETDESC_IA64MCASMINFO_H
 
+#include "llvm/ADT/StringRef.h"
 #include "llvm/MC/MCAsmInfoELF.h"
+#include "llvm/MC/MCExpr.h"
 
 namespace llvm {
 
+class MCSpecifierExpr;
 class MCTargetOptions;
 class Triple;
+class raw_ostream;
+
+namespace IA64 {
+// Relocation specifiers. The backend is asm-output only, so these only select
+// the printed form (e.g. "@ltoff(sym)"); the GNU assembler turns that into the
+// matching R_IA64_* relocation. The specifier value is carried on the symbol
+// operand's target flags (set in IA64ISelDAGToDAG) and read back in
+// IA64MCInstLower.
+enum Specifier : uint16_t {
+  S_None = 0,
+  // @ltoff(sym): the gp-relative offset of the symbol's linkage-table (GOT)
+  // entry; emitted for the ADDL_GA + LD8 global-address sequence.
+  S_LTOFF = MCSymbolRefExpr::FirstTargetSpecifier,
+};
+
+StringRef getSpecifierName(uint16_t S);
+} // namespace IA64
 
 class IA64MCAsmInfo : public MCAsmInfoELF {
   void anchor() override;
@@ -28,6 +48,9 @@ class IA64MCAsmInfo : public MCAsmInfoELF {
 public:
   explicit IA64MCAsmInfo(const Triple &TheTriple,
                          const MCTargetOptions &Options);
+
+  void printSpecifierExpr(raw_ostream &OS,
+                          const MCSpecifierExpr &Expr) const override;
 };
 
 } // namespace llvm

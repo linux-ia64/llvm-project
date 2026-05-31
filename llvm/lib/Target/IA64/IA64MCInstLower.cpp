@@ -24,6 +24,10 @@ MCOperand IA64MCInstLower::lowerSymbolOperand(const MachineOperand &MO,
   if (MO.getOffset())
     Expr = MCBinaryExpr::createAdd(
         Expr, MCConstantExpr::create(MO.getOffset(), Ctx), Ctx);
+  // A relocation specifier (e.g. IA64::S_LTOFF) is carried on the operand's
+  // target flags; wrap the symbol so it prints as "@ltoff(sym)".
+  if (unsigned Specifier = MO.getTargetFlags())
+    Expr = MCSpecifierExpr::create(Expr, Specifier, Ctx);
   return MCOperand::createExpr(Expr);
 }
 
