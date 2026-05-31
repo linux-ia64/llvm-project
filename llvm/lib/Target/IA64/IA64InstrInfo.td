@@ -315,6 +315,10 @@ def FCMPGEU: AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins FP:$src1, FP:$src2),
 def PCMPEQUNCR0R0 : AForm<0x03, 0x0b, (outs PR:$dst), (ins PR:$qp),
     "($qp) cmp.eq.unc $dst, p0 = r0, r0">, isA;
 
+// materialization of PR (i1) constants using CMPNE/CMPEQ
+def : Pat<(i1 0), (CMPNE r0, r0)>;
+def : Pat<(i1 1), (CMPEQ r0, r0)>;
+
 let Constraints = "$bogus = $dst" in {
   def TPCMPEQR0R0 : AForm<0x03, 0x0b, (outs PR:$dst), (ins PR:$bogus, PR:$qp),
     "($qp) cmp.eq $dst, p0 = r0, r0">, isA;
