@@ -206,6 +206,9 @@ def SXT4 : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src), "sxt4 $dst = $sr
 def ZXT4 : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src), "zxt4 $dst = $src",
            [(set GR:$dst, (and GR:$src, is32ones))]>, isI;
 
+// extend PR into GR
+def : Pat<(zext PR:$src), (TPCADDS (ADDS r0, 0), 1, PR:$src)>;
+
 // fixme: shrs vs shru?
 def MIX1L : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, GR:$src2),
           "mix1.l $dst = $src1, $src2", []>, isI;
