@@ -629,6 +629,10 @@ void tools::gnutools::Assembler::ConstructJob(Compilation &C,
   switch (getToolChain().getArch()) {
   default:
     break;
+  // Select explicit stop mode
+  case llvm::Triple::ia64:
+    CmdArgs.push_back("-x");
+    break;
   // Add --32/--64 to make sure we get the format we want.
   // This is incomplete
   case llvm::Triple::x86:
@@ -3109,6 +3113,7 @@ bool Generic_GCC::IsIntegratedAssemblerDefault() const {
   case llvm::Triple::nvptx:
   case llvm::Triple::nvptx64:
   case llvm::Triple::xcore:
+  case llvm::Triple::ia64:
     return false;
   default:
     return true;
