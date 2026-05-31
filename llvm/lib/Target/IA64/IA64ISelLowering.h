@@ -18,6 +18,7 @@
 
 namespace llvm {
 
+class MachineInstr;
 class TargetSubtargetInfo;
 
 namespace IA64ISD {
@@ -61,6 +62,12 @@ public:
                       const SmallVectorImpl<ISD::OutputArg> &Outs,
                       const SmallVectorImpl<SDValue> &OutVals, const SDLoc &dl,
                       SelectionDAG &DAG) const override;
+
+  /// Mark a call to a non-local callee as clobbering gp (r1), so the gp
+  /// save/restore that LowerCall emits survives coalescing. Local (dso_local)
+  /// callees keep gp and are left alone.
+  void AdjustInstrPostInstrSelection(MachineInstr &MI,
+                                     SDNode *Node) const override;
 };
 
 } // end namespace llvm

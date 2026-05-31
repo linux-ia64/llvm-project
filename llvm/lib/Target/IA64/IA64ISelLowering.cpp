@@ -28,6 +28,7 @@
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
+#include "llvm/IR/GlobalValue.h"
 #include "llvm/Support/ErrorHandling.h"
 
 using namespace llvm;
@@ -385,4 +386,30 @@ SDValue IA64TargetLowering::LowerReturn(
     RetOps.push_back(Glue);
 
   return DAG.getNode(IA64ISD::RET_FLAG, dl, MVT::Other, RetOps);
+}
+
+void IA64TargetLowering::AdjustInstrPostInstrSelection(MachineInstr &MI,
+                                                       SDNode * /*Node*/) const {
+  unsigned Opc = MI.getOpcode();
+  if (Opc != IA64::BRCALL_IPREL_GA && Opc != IA64::BRCALL_IPREL_ES)
+    return;
+
+  // gp (r1) is caller-saved at any call that is *not* provably local to this
+  // load module: such a call may be resolved through an import stub that loads
+  // the callee's own gp, and whether that happens is a static-vs-dynamic
+  // linking decision we cannot see at compile time -- so we must conservatively
+  // assume it does. Marking the call as defining r1 keeps the gp save/restore
+  // LowerCall emits from being coalesced away (the same mechanism as rp/b0).
+  //
+  // A dso_local callee (e.g. a recursive self-call) keeps gp, so we leave it
+  // alone and the redundant save/restore folds away -- no per-call gp churn.
+  // (LTO could later prove more callees local and drop the clobber.)
+  //
+  // The call's only explicit operand (0) is the target: a GlobalAddress (direct
+  // call to a known function) or an ExternalSymbol (always external).
+  const MachineOperand &Target = MI.getOperand(0);
+  bool IsLocal = Target.isGlobal() && Target.getGlobal()->isDSOLocal();
+  if (!IsLocal)
+    MI.addOperand(
+        MachineOperand::CreateReg(IA64::r1, /*isDef=*/true, /*isImp=*/true));
 }

@@ -597,6 +597,11 @@ let isTerminator = 1, isBranch = 1 in {
 }
 
 let isCall = 1, /* isTerminator = 1, isBranch = 1, */
+  // A non-local callee may clobber gp (r1) via an import stub; the call lowering
+  // can't know that statically, so AdjustInstrPostInstrSelection adds r1 to the
+  // Defs of a non-dso_local call after selection. hasPostISelHook routes the
+  // call instructions through that hook.
+  hasPostISelHook = 1,
   Uses = [out0,out1,out2,out3,out4,out5,out6,out7],
 // all calls clobber non-callee-saved registers, and for now, they are these:
 // rp (b0) leads the list: br.call writes the return address into it, so every
