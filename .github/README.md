@@ -17,7 +17,7 @@ The tarball is under 300MB. Extract the necessary parts with the following
 command:
 
 ```sh
-tar --exclude=llvm-project-ia64-restoration/{llvm,clang,libc}/tests \
+tar --exclude=llvm-project-ia64-restoration/{llvm,clang,libc}/test \
     -xvzf ia64-restoration.tar.gz \
     llvm-project-ia64-restoration/{cmake,llvm,clang,libc,third-party/siphash}
 ```
