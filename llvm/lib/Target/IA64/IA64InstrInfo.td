@@ -374,6 +374,17 @@ let Constraints = "$src2 = $dst" in {
     "($qp) mov $dst = $src">, isF;
 }
 
+// IA-64 predicates rather than branching: lower (select p, t, f) to a single
+// predicated move whose *false* value enters through the tied default operand,
+// predicating only the *true* arm:
+//   mov dst = f  ;;  (p) mov dst = t
+// The complement predicate is never needed, so no bidirectional compare is
+// required; the mandatory stop after the predicate-defining cmp covers the
+// def->use hazard regardless. The i1 condition is already a PR (our setcc
+// yields one), so select(setcc(..), t, f) consumes the cmp we already emit.
+def : Pat<(i64 (select PR:$qp, GR:$t, GR:$f)), (CMOV  GR:$f, GR:$t, PR:$qp)>;
+def : Pat<(f64 (select PR:$qp, FP:$t, FP:$f)), (CFMOV FP:$f, FP:$t, PR:$qp)>;
+
 // load constants of various sizes // FIXME: prettyprint -ve constants
 
 // TODO: support postincrement (reg, imm9) loads+stores - this needs more
