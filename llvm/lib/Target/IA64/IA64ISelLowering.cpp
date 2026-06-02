@@ -209,10 +209,8 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   bool isVarArg = CLI.IsVarArg;
   MachineFunction &MF = DAG.getMachineFunction();
 
-  // No tail calls or varargs yet (fib needs neither).
+  // No tail calls yet.
   CLI.IsTailCall = false;
-  if (isVarArg)
-    report_fatal_error("IA64: variadic calls are not yet supported");
 
   // Assign the outgoing arguments to out0-out7 / F8-F15 (caller convention).
   SmallVector<CCValAssign, 16> ArgLocs;
@@ -238,6 +236,11 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   for (unsigned i = 0, e = ArgLocs.size(); i != e; ++i) {
     CCValAssign &VA = ArgLocs[i];
     SDValue Arg = OutVals[i];
+
+    if (isVarArg && Outs[VA.getValNo()].Flags.isVarArg() &&
+        VA.getLocVT().isFloatingPoint())
+      report_fatal_error("IA64: variadic floating-point call arguments are not "
+                         "yet supported");
 
     switch (VA.getLocInfo()) {
     case CCValAssign::Full:
