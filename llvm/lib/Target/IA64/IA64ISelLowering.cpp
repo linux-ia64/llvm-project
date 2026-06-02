@@ -62,6 +62,7 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
   // FP (f64) compares/branches stay deferred -- no FCMP patterns yet.
   setOperationAction(ISD::BR_CC, MVT::i64, Expand);
   setOperationAction(ISD::SELECT_CC, MVT::i64, Expand);
+  setOperationAction(ISD::SELECT_CC, MVT::f64, Expand);
 
   setOperationAction(ISD::SINT_TO_FP, MVT::i1, Promote);
   setOperationAction(ISD::UINT_TO_FP, MVT::i1, Promote);
