@@ -89,6 +89,11 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
   // FIXME: IA64 has this (mux @rev), but it is not implemented.
   setOperationAction(ISD::BSWAP, MVT::i64, Expand);
 
+  // Use toolchain built-in for integer division
+  for (unsigned Op : {ISD::SDIV, ISD::UDIV, ISD::SREM, ISD::UREM, ISD::UDIVREM,
+                      ISD::SDIVREM})
+    setOperationAction(Op, MVT::i64, Expand);
+
   // Use the default (library/expansion) implementations.
   setOperationAction(ISD::VACOPY, MVT::Other, Expand);
   setOperationAction(ISD::VAEND, MVT::Other, Expand);
