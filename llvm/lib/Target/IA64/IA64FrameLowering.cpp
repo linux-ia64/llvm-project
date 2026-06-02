@@ -67,19 +67,17 @@ void IA64FrameLowering::emitPrologue(MachineFunction &MF,
   unsigned NumOutRegsUsed = MF.getInfo<IA64FunctionInfo>()->OutRegsUsed;
 
   // Find the PSEUDO_ALLOC to learn which register receives ar.pfs.
-  // FIXME: handle the case where there isn't a PSEUDO_ALLOC in the MBB.
   Register DstRegOfPseudoAlloc;
-  for (MBBI = MBB.begin();; ++MBBI) {
-    assert(MBBI != MBB.end());
-    if (MBBI->getOpcode() == IA64::PSEUDO_ALLOC) {
-      DstRegOfPseudoAlloc = MBBI->getOperand(0).getReg();
+  for (MachineInstr &MI : MBB) {
+    if (MI.getOpcode() == IA64::PSEUDO_ALLOC) {
+      DstRegOfPseudoAlloc = MI.getOperand(0).getReg();
+      DL = MI.getDebugLoc();
       break;
     }
   }
+  assert(DstRegOfPseudoAlloc && "no PSEUDO_ALLOC in entry block");
 
-  if (MBBI != MBB.end())
-    DL = MBBI->getDebugLoc();
-
+  // 'alloc' must be the first instruction in the function
   BuildMI(MBB, MBBI, DL, TII->get(IA64::ALLOC))
       .addReg(DstRegOfPseudoAlloc)
       .addImm(0)
