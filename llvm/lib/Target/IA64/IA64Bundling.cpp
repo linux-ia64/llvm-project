@@ -68,6 +68,8 @@ FunctionPass *llvm::createIA64BundlingPass() { return new IA64BundlingPass(); }
 bool IA64BundlingPass::runOnMachineBasicBlock(MachineBasicBlock &MBB) {
   bool Changed = false;
 
+  bool RSEWrite = false;
+
   for (MachineBasicBlock::iterator I = MBB.begin(); I != MBB.end();) {
     MachineInstr &MI = *I;
     ++I;
@@ -89,17 +91,23 @@ bool IA64BundlingPass::runOnMachineBasicBlock(MachineBasicBlock &MBB) {
     set_intersect(CurrentReads, PendingRegWrites);
     set_intersect(CurrentWrites, PendingRegWrites);
 
-    if (!(CurrentReads.empty() && CurrentWrites.empty())) {
-      // Conflict: insert a stop before this instruction and reset the pending
-      // set to this instruction's writes.
+    if ((RSEWrite && MI.isCall()) ||
+        !(CurrentReads.empty() && CurrentWrites.empty())) {
+      // Conflict (or the forced stop after an alloc): insert a stop before this
+      // instruction and reset the pending set to this instruction's writes.
       BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(IA64::STOP));
       PendingRegWrites = OrigWrites;
       Changed = true;
+      RSEWrite = false;
       ++StopBitsAdded;
     } else {
       // No conflict: accumulate this instruction's writes.
       set_union(PendingRegWrites, OrigWrites);
     }
+
+    // An alloc writes into the RSE and has to be separated from calls
+    if (MI.getOpcode() == IA64::ALLOC)
+      RSEWrite = true;
   }
 
   return Changed;
