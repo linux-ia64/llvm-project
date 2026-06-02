@@ -145,6 +145,15 @@ SDValue IA64TargetLowering::LowerFormalArguments(
   CCState CCInfo(CallConv, isVarArg, MF, ArgLocs, *DAG.getContext());
   CCInfo.AnalyzeFormalArguments(Ins, CC_IA64);
 
+  // The physical registers the incoming arguments arrive in. The PSEUDO_ALLOC
+  // below is made to "use" these (with an early-clobber result), so the register
+  // allocator cannot place the ar.pfs save into a live argument register --
+  // 'alloc' reconfigures the frame those registers occupy, and its destination
+  // must not alias one of them. Without this, the coalescer can shorten an arg's
+  // live range to end before the PSEUDO_ALLOC, letting ar.pfs reuse e.g. r32 and
+  // clobber the incoming argument.
+  SmallVector<Register, 8> ArgPhysRegs;
+
   for (CCValAssign &VA : ArgLocs) {
     if (VA.isRegLoc()) {
       // The argument arrives in a register.
@@ -159,6 +168,7 @@ SDValue IA64TargetLowering::LowerFormalArguments(
 
       Register VReg = RegInfo.createVirtualRegister(RC);
       RegInfo.addLiveIn(VA.getLocReg(), VReg);
+      ArgPhysRegs.push_back(VA.getLocReg());
       SDValue ArgValue = DAG.getCopyFromReg(Chain, dl, VReg, RegVT);
 
       // If the argument was widened to fill the register, narrow it back to
@@ -185,12 +195,18 @@ SDValue IA64TargetLowering::LowerFormalArguments(
 
   // Materialise the PSEUDO_ALLOC at function entry. Frame lowering later scans
   // for it to size and place the real 'alloc'; LowerReturn reads the captured
-  // vreg to restore ar.pfs before the branch.
+  // vreg to restore ar.pfs before the branch. The result is marked early-clobber
+  // and the instruction is given the incoming argument registers as implicit
+  // uses, so the allocator keeps the ar.pfs save off any live argument register
+  // (see ArgPhysRegs above).
   const TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();
   Register VirtGPR = RegInfo.createVirtualRegister(&IA64::GRRegClass);
   MachineBasicBlock &EntryBB = MF.front();
-  BuildMI(EntryBB, EntryBB.begin(), DebugLoc(), TII.get(IA64::PSEUDO_ALLOC),
-          VirtGPR);
+  MachineInstrBuilder MIB =
+      BuildMI(EntryBB, EntryBB.begin(), DebugLoc(), TII.get(IA64::PSEUDO_ALLOC))
+          .addReg(VirtGPR, RegState::Define | RegState::EarlyClobber);
+  for (Register ArgReg : ArgPhysRegs)
+    MIB.addReg(ArgReg, RegState::Implicit);
   MF.getInfo<IA64FunctionInfo>()->setVirtGPR(VirtGPR);
 
   return Chain;
