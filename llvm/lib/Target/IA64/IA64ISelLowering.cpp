@@ -70,6 +70,7 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
 
   setOperationAction(ISD::FREM, MVT::f32, Expand);
   setOperationAction(ISD::FREM, MVT::f64, Expand);
+  setOperationAction(ISD::FDIV, MVT::f64, Expand);
 
   // We don't support sin/cos/sqrt/pow.
   for (MVT VT : {MVT::f32, MVT::f64}) {

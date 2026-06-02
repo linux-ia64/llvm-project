@@ -514,13 +514,16 @@ def POPCNT : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src),
 
 // some FP stuff:  // TODO: single-precision stuff?
 def FADD : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2),
-  "fadd $dst = $src1, $src2", []>, isF;
+  "fadd $dst = $src1, $src2",
+  [(set FP:$dst, (fadd FP:$src1, FP:$src2))]>, isF;
 def FADDS: AForm<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2),
   "fadd.s $dst = $src1, $src2">, isF;
 def FSUB : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2),
-  "fsub $dst = $src1, $src2", []>, isF;
+  "fsub $dst = $src1, $src2",
+  [(set FP:$dst, (fsub FP:$src1, FP:$src2))]>, isF;
 def FMPY : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2),
-  "fmpy $dst = $src1, $src2", []>, isF;
+  "fmpy $dst = $src1, $src2",
+  [(set FP:$dst, (fmul FP:$src1, FP:$src2))]>, isF;
 def FMA : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$src3),
   "fma $dst = $src1, $src2, $src3", []>, isF;
 def FMS : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$src3),
@@ -591,6 +594,12 @@ def FCVTFXUTRUNCS1 : AForm<0x03, 0x0b, (outs FP:$dst), (ins FP:$src),
 
 def FNORMD : AForm<0x03, 0x0b, (outs FP:$dst), (ins FP:$src),
   "fnorm.d $dst = $src">, isF;
+
+// Integer <-> floating-point conversions
+def : Pat<(f64 (sint_to_fp GR:$src)), (FCVTXF  (SETFSIGD GR:$src))>;
+def : Pat<(f64 (uint_to_fp GR:$src)), (FCVTXUF (SETFSIGD GR:$src))>;
+def : Pat<(i64 (fp_to_sint FP:$src)), (GETFSIGD (FCVTFXTRUNC  FP:$src))>;
+def : Pat<(i64 (fp_to_uint FP:$src)), (GETFSIGD (FCVTFXUTRUNC FP:$src))>;
 
 def GETFD : AForm<0x03, 0x0b, (outs GR:$dst), (ins FP:$src),
   "getf.d $dst = $src">, isM;
