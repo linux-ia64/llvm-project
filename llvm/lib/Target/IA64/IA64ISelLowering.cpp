@@ -40,8 +40,10 @@ using namespace llvm;
 IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
                                        const TargetSubtargetInfo &STI)
     : TargetLowering(TM, STI) {
-  // Register classes: general (i64), floating-point (f64) and predicate (i1).
+  // Register classes: general (i64), floating-point (f32/f64) and predicate
+  // (i1).
   addRegisterClass(MVT::i64, &IA64::GRRegClass);
+  addRegisterClass(MVT::f32, &IA64::FPRegClass);
   addRegisterClass(MVT::f64, &IA64::FPRegClass);
   addRegisterClass(MVT::i1, &IA64::PRRegClass);
 
@@ -71,6 +73,12 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::FREM, MVT::f32, Expand);
   setOperationAction(ISD::FREM, MVT::f64, Expand);
   setOperationAction(ISD::FDIV, MVT::f64, Expand);
+
+  // f32 is a hardware type (held in the FP registers), but we model no separate
+  // single-precision arithmetic path: promote f32 arithmetic to f64 and round
+  // the result with fnorm.s (FP_ROUND).
+  for (unsigned Op : {ISD::FADD, ISD::FSUB, ISD::FMUL, ISD::FDIV})
+    setOperationAction(Op, MVT::f32, Promote);
 
   // We don't support sin/cos/sqrt/pow.
   for (MVT VT : {MVT::f32, MVT::f64}) {

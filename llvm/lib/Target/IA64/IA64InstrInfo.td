@@ -242,7 +242,8 @@ def XMAHUD : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$
 // the low-half integer 'mul' -- then move the result back to a GR (getf.sig).
 // (mulhs/mulhu via xma.h/xma.hu are deferred; not needed yet.)
 def : Pat<(mul GR:$src1, GR:$src2),
-          (GETFSIGD (XMALD (SETFSIGD GR:$src1), (SETFSIGD GR:$src2), F0))>;
+          (GETFSIGD (f64 (XMALD (f64 (SETFSIGD GR:$src1)),
+                                (f64 (SETFSIGD GR:$src2)), (f64 F0))))>;
 
 def AND   : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, GR:$src2),
           "and $dst = $src1, $src2",
@@ -512,18 +513,18 @@ let canFoldAsLoad = 1 in {
 def POPCNT : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src),
   "popcnt $dst = $src", []>, isI;
 
-// some FP stuff:  // TODO: single-precision stuff?
+// some FP stuff:
 def FADD : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2),
   "fadd $dst = $src1, $src2",
-  [(set FP:$dst, (fadd FP:$src1, FP:$src2))]>, isF;
+  [(set FP:$dst, (f64 (fadd FP:$src1, FP:$src2)))]>, isF;
 def FADDS: AForm<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2),
   "fadd.s $dst = $src1, $src2">, isF;
 def FSUB : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2),
   "fsub $dst = $src1, $src2",
-  [(set FP:$dst, (fsub FP:$src1, FP:$src2))]>, isF;
+  [(set FP:$dst, (f64 (fsub FP:$src1, FP:$src2)))]>, isF;
 def FMPY : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2),
   "fmpy $dst = $src1, $src2",
-  [(set FP:$dst, (fmul FP:$src1, FP:$src2))]>, isF;
+  [(set FP:$dst, (f64 (fmul FP:$src1, FP:$src2)))]>, isF;
 def FMA : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$src3),
   "fma $dst = $src1, $src2, $src3", []>, isF;
 def FMS : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$src3),
@@ -594,12 +595,25 @@ def FCVTFXUTRUNCS1 : AForm<0x03, 0x0b, (outs FP:$dst), (ins FP:$src),
 
 def FNORMD : AForm<0x03, 0x0b, (outs FP:$dst), (ins FP:$src),
   "fnorm.d $dst = $src">, isF;
+def FNORMS : AForm<0x03, 0x0b, (outs FP:$dst), (ins FP:$src),
+  "fnorm.s $dst = $src">, isF;
 
-// Integer <-> floating-point conversions
+// f32 <-> f64 in registers
+def : Pat<(f64 (fpextend FP:$src)), (FNORMD FP:$src)>;
+def : Pat<(f32 (fpround FP:$src)),  (FNORMS FP:$src)>;
+
+// Integer <-> floating-point conversions. Both the int->fp and fp->int actions
+// are keyed by the *integer* type, so f32-result/operand forms are not promoted
+// for us -- pattern them directly. fp->int fpext's an f32 operand to f64 then
+// fcvt; int->f32 converts in f64 then rounds to single (fnorm.s).
 def : Pat<(f64 (sint_to_fp GR:$src)), (FCVTXF  (SETFSIGD GR:$src))>;
 def : Pat<(f64 (uint_to_fp GR:$src)), (FCVTXUF (SETFSIGD GR:$src))>;
-def : Pat<(i64 (fp_to_sint FP:$src)), (GETFSIGD (FCVTFXTRUNC  FP:$src))>;
-def : Pat<(i64 (fp_to_uint FP:$src)), (GETFSIGD (FCVTFXUTRUNC FP:$src))>;
+def : Pat<(f32 (sint_to_fp GR:$src)), (FNORMS (f64 (FCVTXF  (f64 (SETFSIGD GR:$src)))))>;
+def : Pat<(f32 (uint_to_fp GR:$src)), (FNORMS (f64 (FCVTXUF (f64 (SETFSIGD GR:$src)))))>;
+def : Pat<(i64 (fp_to_sint (f64 FP:$src))), (GETFSIGD (FCVTFXTRUNC  FP:$src))>;
+def : Pat<(i64 (fp_to_uint (f64 FP:$src))), (GETFSIGD (FCVTFXUTRUNC FP:$src))>;
+def : Pat<(i64 (fp_to_sint (f32 FP:$src))), (GETFSIGD (FCVTFXTRUNC  (FNORMD FP:$src)))>;
+def : Pat<(i64 (fp_to_uint (f32 FP:$src))), (GETFSIGD (FCVTFXUTRUNC (FNORMD FP:$src)))>;
 
 def GETFD : AForm<0x03, 0x0b, (outs GR:$dst), (ins FP:$src),
   "getf.d $dst = $src">, isM;

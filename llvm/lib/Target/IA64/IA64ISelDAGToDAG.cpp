@@ -195,6 +195,7 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
       switch (Value.getValueType().getSimpleVT().SimpleTy) {
       case MVT::i64: Opc = IA64::ST8;  break;
       case MVT::f64: Opc = IA64::STF8; break;
+      case MVT::f32: Opc = IA64::STF4; break;
       default:
         report_fatal_error("IA64: cannot select a store of this type");
       }
