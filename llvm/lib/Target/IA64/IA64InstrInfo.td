@@ -651,10 +651,6 @@ let isCall = 1, /* isTerminator = 1, isBranch = 1, */
   // Defs of a non-dso_local call after selection. hasPostISelHook routes the
   // call instructions through that hook.
   hasPostISelHook = 1,
-  // A call uses the argument registers: the stacked output GRs out0-out7 AND
-  // the floating-point argument registers F8-F15.
-  Uses = [out0,out1,out2,out3,out4,out5,out6,out7,
-          F8,F9,F10,F11,F12,F13,F14,F15],
 // all calls clobber non-callee-saved registers, and for now, they are these:
 // rp (b0) leads the list: br.call writes the return address into it, so every
 // call clobbers it. Without this the rp save/restore LowerCall emits around a

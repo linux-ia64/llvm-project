@@ -337,7 +337,9 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
 
   // Emit the call.
   SDVTList NodeTys = DAG.getVTList(MVT::Other, MVT::Glue);
-  SmallVector<SDValue, 4> Ops = {Chain, Callee};
+  SmallVector<SDValue, 12> Ops = {Chain, Callee};
+  for (auto &R : RegsToPass)
+    Ops.push_back(DAG.getRegister(R.first, R.second.getValueType()));
   if (InGlue.getNode())
     Ops.push_back(InGlue);
   Chain = DAG.getNode(IA64ISD::BRCALL, dl, NodeTys, Ops);
