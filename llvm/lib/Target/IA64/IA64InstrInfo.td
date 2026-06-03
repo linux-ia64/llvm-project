@@ -625,6 +625,17 @@ def GETFSIG : AForm<0x03, 0x0b, (outs GR:$dst), (ins FP:$src),
 def SETFSIG : AForm<0x03, 0x0b, (outs FP:$dst), (ins GR:$src),
   "setf.sig $dst = $src">, isM;
 
+// Implement f64/f32 immediates using i64 immediates
+def fpimm_bits64 : SDNodeXForm<fpimm, [{
+  APFloat F = N->getValueAPF();
+  bool Ignored;
+  F.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven, &Ignored);
+  return CurDAG->getTargetConstant(F.bitcastToAPInt().getZExtValue(),
+                                   SDLoc(N), MVT::i64);
+}]>;
+def : Pat<(f64 fpimm:$v), (SETFD (MOVL (fpimm_bits64 $v)))>;
+def : Pat<(f32 fpimm:$v), (SETFD (MOVL (fpimm_bits64 $v)))>;
+
 let isTerminator = 1, isBranch = 1 in {
   def BRL_NOTCALL : RawForm<0x03, 0xb0, (outs), (ins i64imm:$dst),
     "(p0) brl.cond.sptk $dst">, isB;
