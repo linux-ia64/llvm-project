@@ -143,6 +143,14 @@ EVT IA64TargetLowering::getSetCCResultType(const DataLayout & /*DL*/,
   return MVT::i1;
 }
 
+bool IA64TargetLowering::isFPImmLegal(const APFloat & /*Imm*/, EVT VT,
+                                      bool /*ForCodeSize*/) const {
+  // Keep f32/f64 constants out of the constant pool: we materialise them from
+  // their integer bit pattern (movl + setf.d) -- see the fpimm patterns in
+  // IA64InstrInfo.td. (There is no constant-pool selection in this backend.)
+  return VT == MVT::f32 || VT == MVT::f64;
+}
+
 SDValue IA64TargetLowering::LowerFormalArguments(
     SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
     const SmallVectorImpl<ISD::InputArg> &Ins, const SDLoc &dl,

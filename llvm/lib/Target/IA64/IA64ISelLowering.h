@@ -49,6 +49,13 @@ public:
   EVT getSetCCResultType(const DataLayout &DL, LLVMContext &Context,
                          EVT VT) const override;
 
+  /// isFPImmLegal - return true for all FP immediates so the legalizer keeps
+  /// them as ConstantFP nodes (which we materialise from their integer bit
+  /// pattern via movl + setf.d) rather than emitting a constant-pool load,
+  /// which this backend does not lower.
+  bool isFPImmLegal(const APFloat &Imm, EVT VT,
+                    bool ForCodeSize) const override;
+
   SDValue
   LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
                        const SmallVectorImpl<ISD::InputArg> &Ins,
