@@ -52,6 +52,11 @@ def CC_IA64_Call : CallingConv<[
   CCIfType<[i64],
            CCAssignToReg<[out0, out1, out2, out3, out4, out5, out6, out7]>>,
 
+  // A variadic FP arg ('...' match) is passed in a general register, not an FR
+  // (prototyped-variadic psABI 8.5.4). The hook handles only varargs and falls
+  // through for fixed FP args, which take the F8-F15 + GR-shadow rule below.
+  CCIfType<[f64], CCCustom<"CC_IA64_Call_VarArgFP">>,
+
   CCIfType<[f64],
            CCAssignToRegWithShadow<[F8, F9, F10, F11, F12, F13, F14, F15],
                                    [out0, out1, out2, out3, out4, out5, out6,

@@ -636,6 +636,12 @@ def fpimm_bits64 : SDNodeXForm<fpimm, [{
 def : Pat<(f64 fpimm:$v), (SETFD (MOVL (fpimm_bits64 $v)))>;
 def : Pat<(f32 fpimm:$v), (SETFD (MOVL (fpimm_bits64 $v)))>;
 
+// Reinterpret an f64's bits as an i64 and back (getf.d / setf.d), the 64-bit
+// IEEE memory form -- used to pass a variadic double in a general register
+// (see CC_IA64_Call_VarArgFP).
+def : Pat<(i64 (bitconvert (f64 FP:$src))), (GETFD FP:$src)>;
+def : Pat<(f64 (bitconvert (i64 GR:$src))), (SETFD GR:$src)>;
+
 let isTerminator = 1, isBranch = 1 in {
   def BRL_NOTCALL : RawForm<0x03, 0xb0, (outs), (ins i64imm:$dst),
     "(p0) brl.cond.sptk $dst">, isB;

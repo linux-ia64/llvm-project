@@ -33,6 +33,33 @@
 
 using namespace llvm;
 
+// Variadic floating-point arguments are passed in the *general* registers, not
+// F8-F15: a prototyped variadic callee (e.g. printf) reads its variable
+// arguments out of the integer parameter slots / register save area, never the
+// FP registers (IA-64 SysV psABI 8.5.4). So an FP value matching the '...' is
+// bit-cast to its i64 IEEE representation (getf.d, the BCvt below) and assigned
+// to the next out register by *slot* via AllocateReg -- which also sidesteps the
+// fixed-arg FP-index shadow mapping. Fixed FP args fall through (return true) to
+// the normal F8-F15+shadow rule. Hooked from CC_IA64_Call (CCCustom).
+static bool CC_IA64_Call_VarArgFP(unsigned ValNo, MVT ValVT, MVT LocVT,
+                                  CCValAssign::LocInfo LocInfo,
+                                  ISD::ArgFlagsTy ArgFlags, CCState &State) {
+  // The CCCustom wrapper stops at this rule when we return true ("handled") and
+  // falls through to the next rule when we return false.
+  if (!ArgFlags.isVarArg())
+    return false; // a fixed FP arg: let the F8-F15 + GR-shadow rule handle it
+  static const MCPhysReg OutRegs[] = {IA64::out0, IA64::out1, IA64::out2,
+                                      IA64::out3, IA64::out4, IA64::out5,
+                                      IA64::out6, IA64::out7};
+  if (unsigned Reg = State.AllocateReg(OutRegs))
+    State.addLoc(
+        CCValAssign::getReg(ValNo, ValVT, Reg, MVT::i64, CCValAssign::BCvt));
+  else
+    State.addLoc(CCValAssign::getMem(ValNo, ValVT, State.AllocateStack(8, Align(8)),
+                                     MVT::i64, CCValAssign::BCvt));
+  return true; // handled
+}
+
 #define GET_CALLING_CONV_IMPL
 
 #include "IA64GenCallingConv.inc"
@@ -270,13 +297,13 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
     CCValAssign &VA = ArgLocs[i];
     SDValue Arg = OutVals[i];
 
-    if (isVarArg && Outs[VA.getValNo()].Flags.isVarArg() &&
-        VA.getLocVT().isFloatingPoint())
-      report_fatal_error("IA64: variadic floating-point call arguments are not "
-                         "yet supported");
-
     switch (VA.getLocInfo()) {
     case CCValAssign::Full:
+      break;
+    case CCValAssign::BCvt:
+      // A variadic FP arg routed into a GR slot: reinterpret the f64 as its
+      // i64 IEEE bit pattern (selects to getf.d). See CC_IA64_Call_VarArgFP.
+      Arg = DAG.getNode(ISD::BITCAST, dl, VA.getLocVT(), Arg);
       break;
     case CCValAssign::SExt:
       Arg = DAG.getNode(ISD::SIGN_EXTEND, dl, VA.getLocVT(), Arg);
