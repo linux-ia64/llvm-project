@@ -129,15 +129,21 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
   }
 
   case IA64ISD::BRCALL: {
-    // The call hack: LowerCall builds IA64ISD::BRCALL (chain, callee, glue) and
-    // leaves the callee as a Target{GlobalAddress,ExternalSymbol}. A direct call
-    // selects to 'br.call rp = <target>'. Indirect / function-descriptor calls
+    // The call hack: LowerCall builds IA64ISD::BRCALL (chain, callee,
+    // arg-reg uses..., [glue]) and leaves the callee as a
+    // Target{GlobalAddress,ExternalSymbol}. A direct call selects to
+    // 'br.call rp = <target>'; the argument-register operands carry through as
+    // the call's (precise) implicit uses. Indirect / function-descriptor calls
     // (BRCALL_INDIRECT through b6) are deferred -- fib only calls directly.
     SDValue Chain = N->getOperand(0);
     SDValue Callee = N->getOperand(1);
+
+    // A trailing glue operand, if present, is last; everything between the
+    // callee and it is an argument-register use.
+    unsigned NumOps = N->getNumOperands();
     SDValue InGlue;
-    if (N->getNumOperands() > 2)
-      InGlue = N->getOperand(2);
+    if (NumOps && N->getOperand(NumOps - 1).getValueType() == MVT::Glue)
+      InGlue = N->getOperand(--NumOps);
 
     unsigned Opc;
     if (Callee.getOpcode() == ISD::TargetGlobalAddress)
@@ -147,9 +153,12 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
     else
       report_fatal_error("IA64: only direct calls are supported");
 
-    // Machine-node operands: (calltarget, chain, [glue]); results: (chain, glue).
-    SmallVector<SDValue, 3> Ops;
+    // Machine-node operands: (calltarget, arg-reg uses..., chain, [glue]);
+    // results: (chain, glue).
+    SmallVector<SDValue, 12> Ops;
     Ops.push_back(Callee);
+    for (unsigned i = 2; i < NumOps; ++i)
+      Ops.push_back(N->getOperand(i));
     Ops.push_back(Chain);
     if (InGlue.getNode())
       Ops.push_back(InGlue);
