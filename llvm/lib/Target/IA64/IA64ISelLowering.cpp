@@ -102,6 +102,17 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
   setCondCodeAction(ISD::SETONE, MVT::f64, Expand);
   setCondCodeAction(ISD::SETUEQ, MVT::f64, Expand);
 
+  // Comparing two predicates (i1): keep br_cc/select_cc as setcc + brcond/select,
+  // and custom-lower the i1 setcc to predicate logic (eq/ne -> xnor/xor).
+  setOperationAction(ISD::BR_CC, MVT::i1, Expand);
+  setOperationAction(ISD::SELECT_CC, MVT::i1, Expand);
+  setOperationAction(ISD::SETCC, MVT::i1, Custom);
+  // ...but mark the i1 eq/ne conditions Expand so the combiner's rebuildSetCC
+  // does not turn our lowered xor back into an i1 setcc (an infinite loop, since
+  // that setcc is Custom-lowered to the same xor again).
+  setCondCodeAction(ISD::SETEQ, MVT::i1, Expand);
+  setCondCodeAction(ISD::SETNE, MVT::i1, Expand);
+
   setOperationAction(ISD::SINT_TO_FP, MVT::i1, Promote);
   setOperationAction(ISD::UINT_TO_FP, MVT::i1, Promote);
   setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i1, Expand);
@@ -487,6 +498,20 @@ SDValue IA64TargetLowering::LowerOperation(SDValue Op,
   switch (Op.getOpcode()) {
   default:
     report_fatal_error("IA64: unimplemented custom operation lowering");
+  case ISD::SETCC: {
+    // i1 (predicate) comparison: a != b is xor, a == b is its complement
+    // (xor then invert via xor with 1). Booleans only ever use eq/ne.
+    SDLoc dl(Op);
+    ISD::CondCode CC = cast<CondCodeSDNode>(Op.getOperand(2))->get();
+    SDValue Xor = DAG.getNode(ISD::XOR, dl, MVT::i1, Op.getOperand(0),
+                              Op.getOperand(1));
+    if (CC == ISD::SETNE)
+      return Xor;
+    if (CC == ISD::SETEQ)
+      return DAG.getNode(ISD::XOR, dl, MVT::i1, Xor,
+                         DAG.getConstant(1, dl, MVT::i1));
+    report_fatal_error("IA64: unhandled i1 SETCC condition (expected eq/ne)");
+  }
   case ISD::VASTART: {
     // va_start stores the address of the register save area (the first variadic
     // argument slot, filled in by LowerFormalArguments) into the va_list.
