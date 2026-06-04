@@ -346,8 +346,10 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
 
   Chain = DAG.getCALLSEQ_START(Chain, NumBytes, 0, dl);
 
-  // Collect the (out-register, value) pairs to copy in just before the call.
+  // Collect the (out-register, value) pairs to copy in just before the call,
+  // and the stores for any arguments that overflow onto the outgoing stack.
   SmallVector<std::pair<unsigned, SDValue>, 8> RegsToPass;
+  SmallVector<SDValue, 8> MemOpChains;
   for (unsigned i = 0, e = ArgLocs.size(); i != e; ++i) {
     CCValAssign &VA = ArgLocs[i];
     SDValue Arg = OutVals[i];
@@ -376,10 +378,28 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
       report_fatal_error("IA64: unhandled argument CCValAssign");
     }
 
-    if (!VA.isRegLoc())
-      report_fatal_error("IA64: stack (>8) call arguments are not yet supported");
-    RegsToPass.push_back(std::make_pair(VA.getLocReg(), Arg));
+    if (VA.isRegLoc()) {
+      RegsToPass.push_back(std::make_pair(VA.getLocReg(), Arg));
+    } else {
+      // Arguments beyond out0-out7 are passed on the outgoing stack, just above
+      // the 16-byte scratch area -- the same layout LowerFormalArguments reads
+      // incoming stack arguments from. The store is sp-relative: with a reserved
+      // call frame (no variable-sized objects) sp is constant here; otherwise
+      // the call-frame pseudos adjust it around the call.
+      assert(VA.isMemLoc() && "argument neither in register nor on the stack");
+      SDValue StackPtr = DAG.getRegister(IA64::r12, MVT::i64);
+      SDValue Addr =
+          DAG.getNode(ISD::ADD, dl, MVT::i64, StackPtr,
+                      DAG.getIntPtrConstant(16 + VA.getLocMemOffset(), dl));
+      MemOpChains.push_back(DAG.getStore(
+          Chain, dl, Arg, Addr,
+          MachinePointerInfo::getStack(MF, 16 + VA.getLocMemOffset())));
+    }
   }
+
+  // Sequence all the outgoing-argument stores before the call.
+  if (!MemOpChains.empty())
+    Chain = DAG.getNode(ISD::TokenFactor, dl, MVT::Other, MemOpChains);
 
   // Save gp/sp/rp around the call. rp (b0) is the hard requirement -- br.call
   // overwrites it, so a non-leaf function must preserve its own return pointer;
