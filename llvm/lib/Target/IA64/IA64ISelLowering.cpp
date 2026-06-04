@@ -93,6 +93,15 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::SELECT_CC, MVT::i64, Expand);
   setOperationAction(ISD::SELECT_CC, MVT::f64, Expand);
 
+  // FP compares: keep brcond(setcc f64) from folding into an unselectable
+  // br_cc, so the legalizer hands us setcc + brcond. setcc f64 selects to the
+  // fcmp relations (FCMP* in IA64InstrInfo.td), which cover every clang FP
+  // condition except SETONE/SETUEQ; expand those into a pair joined by the i1
+  // and/or patterns.
+  setOperationAction(ISD::BR_CC, MVT::f64, Expand);
+  setCondCodeAction(ISD::SETONE, MVT::f64, Expand);
+  setCondCodeAction(ISD::SETUEQ, MVT::f64, Expand);
+
   setOperationAction(ISD::SINT_TO_FP, MVT::i1, Promote);
   setOperationAction(ISD::UINT_TO_FP, MVT::i1, Promote);
   setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i1, Expand);

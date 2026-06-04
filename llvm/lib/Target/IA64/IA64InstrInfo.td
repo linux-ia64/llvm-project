@@ -291,27 +291,58 @@ def CMPGEU: AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins GR:$src1, GR:$src2),
           "cmp.geu $dst, p0 = $src1, $src2",
           [(set PR:$dst, (setcc GR:$src1, GR:$src2, SETUGE))]>, isA;
 
-// and we do the whole thing again for FP compares!
+// FP compares. Each sets a predicate from an IA-64 fcmp relation. The ordered
+// relations (eq/lt/le/gt/ge) are false when an operand is NaN; the negated
+// relations (nlt/nle/ngt/nge) and unord are true when unordered -- exactly the
+// U-prefixed setcc semantics. SETONE/SETUEQ have no single relation and are
+// expanded by the legalizer (setCondCodeAction) into a pair of these joined by
+// the i1 and/or patterns.
 def FCMPEQ : AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins FP:$src1, FP:$src2),
-          "fcmp.eq $dst, p0 = $src1, $src2", []>, isF;
+          "fcmp.eq $dst, p0 = $src1, $src2",
+          [(set PR:$dst, (setcc (f64 FP:$src1), (f64 FP:$src2), SETOEQ))]>, isF;
 def FCMPGT : AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins FP:$src1, FP:$src2),
-          "fcmp.gt $dst, p0 = $src1, $src2", []>, isF;
+          "fcmp.gt $dst, p0 = $src1, $src2",
+          [(set PR:$dst, (setcc (f64 FP:$src1), (f64 FP:$src2), SETOGT))]>, isF;
 def FCMPGE : AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins FP:$src1, FP:$src2),
-          "fcmp.ge $dst, p0 = $src1, $src2", []>, isF;
+          "fcmp.ge $dst, p0 = $src1, $src2",
+          [(set PR:$dst, (setcc (f64 FP:$src1), (f64 FP:$src2), SETOGE))]>, isF;
 def FCMPLT : AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins FP:$src1, FP:$src2),
-          "fcmp.lt $dst, p0 = $src1, $src2", []>, isF;
+          "fcmp.lt $dst, p0 = $src1, $src2",
+          [(set PR:$dst, (setcc (f64 FP:$src1), (f64 FP:$src2), SETOLT))]>, isF;
 def FCMPLE : AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins FP:$src1, FP:$src2),
-          "fcmp.le $dst, p0 = $src1, $src2", []>, isF;
+          "fcmp.le $dst, p0 = $src1, $src2",
+          [(set PR:$dst, (setcc (f64 FP:$src1), (f64 FP:$src2), SETOLE))]>, isF;
 def FCMPNE : AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins FP:$src1, FP:$src2),
-          "fcmp.neq $dst, p0 = $src1, $src2", []>, isF;
-def FCMPLTU: AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins FP:$src1, FP:$src2),
-          "fcmp.lt $dst, p0 = $src1, $src2", []>, isF;
-def FCMPGTU: AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins FP:$src1, FP:$src2),
-          "fcmp.gt $dst, p0 = $src1, $src2", []>, isF;
-def FCMPLEU: AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins FP:$src1, FP:$src2),
-          "fcmp.le $dst, p0 = $src1, $src2", []>, isF;
-def FCMPGEU: AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins FP:$src1, FP:$src2),
-          "fcmp.ge $dst, p0 = $src1, $src2", []>, isF;
+          "fcmp.neq $dst, p0 = $src1, $src2",
+          [(set PR:$dst, (setcc (f64 FP:$src1), (f64 FP:$src2), SETUNE))]>, isF;
+def FCMPORD : AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins FP:$src1, FP:$src2),
+          "fcmp.ord $dst, p0 = $src1, $src2",
+          [(set PR:$dst, (setcc (f64 FP:$src1), (f64 FP:$src2), SETO))]>, isF;
+def FCMPUNORD : AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins FP:$src1, FP:$src2),
+          "fcmp.unord $dst, p0 = $src1, $src2",
+          [(set PR:$dst, (setcc (f64 FP:$src1), (f64 FP:$src2), SETUO))]>, isF;
+def FCMPNLT : AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins FP:$src1, FP:$src2),
+          "fcmp.nlt $dst, p0 = $src1, $src2",
+          [(set PR:$dst, (setcc (f64 FP:$src1), (f64 FP:$src2), SETUGE))]>, isF;
+def FCMPNLE : AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins FP:$src1, FP:$src2),
+          "fcmp.nle $dst, p0 = $src1, $src2",
+          [(set PR:$dst, (setcc (f64 FP:$src1), (f64 FP:$src2), SETUGT))]>, isF;
+def FCMPNGT : AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins FP:$src1, FP:$src2),
+          "fcmp.ngt $dst, p0 = $src1, $src2",
+          [(set PR:$dst, (setcc (f64 FP:$src1), (f64 FP:$src2), SETULE))]>, isF;
+def FCMPNGE : AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins FP:$src1, FP:$src2),
+          "fcmp.nge $dst, p0 = $src1, $src2",
+          [(set PR:$dst, (setcc (f64 FP:$src1), (f64 FP:$src2), SETULT))]>, isF;
+
+// The "plain" (NaN-don't-care) FP conditions, which the optimizer emits when
+// NaN ordering is irrelevant (e.g. comparing a folded constant). Map them to
+// the ordered relations -- NaN compares false, matching the hardware fcmp.
+def : Pat<(setcc (f64 FP:$a), (f64 FP:$b), SETEQ), (FCMPEQ FP:$a, FP:$b)>;
+def : Pat<(setcc (f64 FP:$a), (f64 FP:$b), SETGT), (FCMPGT FP:$a, FP:$b)>;
+def : Pat<(setcc (f64 FP:$a), (f64 FP:$b), SETGE), (FCMPGE FP:$a, FP:$b)>;
+def : Pat<(setcc (f64 FP:$a), (f64 FP:$b), SETLT), (FCMPLT FP:$a, FP:$b)>;
+def : Pat<(setcc (f64 FP:$a), (f64 FP:$b), SETLE), (FCMPLE FP:$a, FP:$b)>;
+def : Pat<(setcc (f64 FP:$a), (f64 FP:$b), SETNE), (FCMPNE FP:$a, FP:$b)>;
 
 def PCMPEQUNCR0R0 : AForm<0x03, 0x0b, (outs PR:$dst), (ins PR:$qp),
     "($qp) cmp.eq.unc $dst, p0 = r0, r0">, isA;
