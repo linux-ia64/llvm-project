@@ -465,6 +465,20 @@ def PCMPNE : AForm<0x03, 0x0b, (outs PR:$dst), (ins GR:$src1, GR:$src2, PR:$qp),
 def BCMPEQ : AForm<0x03, 0x0b, (outs PR:$dst1, PR:$dst2), (ins GR:$src1, GR:$src2),
   "cmp.eq $dst1, dst2 = $src1, $src2">, isA;
 
+// Binary logical operations (implemented using conditional assignment)
+def : Pat<(i1 (or  PR:$src1, PR:$src2)),
+  // $dst <- 0
+  // if ($src1) $dst <- 1
+  // if ($src2) $dst <- 1
+  (TPCMPEQ (TPCMPEQ (CMPNE r0, r0), r0, r0, $src1), r0, r0, $src2)>;
+def : Pat<(i1 (and PR:$src1, PR:$src2)),
+  // $dst <- $src1
+  // $aux <- 1
+  // if ($src2) $aux <- 0
+  // if ($aux)  $dst <- 0
+  (TPCMPNE (TPCMPEQ (CMPNE r0, r0), r0, r0, $src1), r0, r0,
+    (TPCMPNE (CMPEQ r0, r0), r0, r0, $src2))>;
+
 def ADDIMM14 : AForm<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, s14imm:$imm),
   "adds $dst = $imm, $src1">, isA;
 
