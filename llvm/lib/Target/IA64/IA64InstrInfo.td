@@ -206,9 +206,6 @@ def SXT4 : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src), "sxt4 $dst = $sr
 def ZXT4 : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src), "zxt4 $dst = $src",
            [(set GR:$dst, (and GR:$src, is32ones))]>, isI;
 
-// extend PR into GR
-def : Pat<(zext PR:$src), (TPCADDS (ADDS r0, 0), 1, PR:$src)>;
-
 // fixme: shrs vs shru?
 def MIX1L : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, GR:$src2),
           "mix1.l $dst = $src1, $src2", []>, isI;
@@ -481,6 +478,12 @@ def SHRSI : AForm<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, u6imm:$imm),
 def EXTRU : AForm<0x03, 0x0b,
   (outs GR:$dst), (ins GR:$src1, u6imm:$imm1, u6imm:$imm2),
   "extr.u $dst = $src1, $imm1, $imm2">, isI;
+
+// extend PR into GR
+def : Pat<(zext PR:$src), (TPCADDS (ADDS r0, 0), 1, PR:$src)>;
+
+// truncate GR into PR: the predicate is the low bit (extr.u then compare != 0)
+def : Pat<(i1 (trunc GR:$src)), (CMPNE (EXTRU GR:$src, 0, 1), r0)>;
 
 def DEPZ : AForm<0x03, 0x0b,
   (outs GR:$dst), (ins GR:$src1, u6imm:$imm1, u6imm:$imm2),
