@@ -70,7 +70,9 @@ void IA64InstrInfo::storeRegToStackSlot(MachineBasicBlock &MBB,
     BuildMI(MBB, MI, DL, get(IA64::STF_SPILL))
         .addFrameIndex(FrameIdx)
         .addReg(SrcReg, getKillRegState(isKill));
-  } else if (RC == &IA64::GRRegClass) {
+  } else if (IA64::GRRegClass.hasSubClassEq(RC)) {
+    // GR or a GR sub-class (e.g. GR03, the restricted r0-r3 ADDL-addend class):
+    // any of them spills with a plain 8-byte store.
     BuildMI(MBB, MI, DL, get(IA64::ST8))
         .addFrameIndex(FrameIdx)
         .addReg(SrcReg, getKillRegState(isKill));
@@ -103,7 +105,8 @@ void IA64InstrInfo::loadRegFromStackSlot(MachineBasicBlock &MBB,
 
   if (RC == &IA64::FPRegClass) {
     BuildMI(MBB, MI, DL, get(IA64::LDF_FILL), DestReg).addFrameIndex(FrameIdx);
-  } else if (RC == &IA64::GRRegClass) {
+  } else if (IA64::GRRegClass.hasSubClassEq(RC)) {
+    // GR or a GR sub-class (e.g. GR03): reload with a plain 8-byte load.
     BuildMI(MBB, MI, DL, get(IA64::LD8), DestReg).addFrameIndex(FrameIdx);
   } else if (RC == &IA64::PRRegClass) {
     // First we load a byte from the stack into r2, our 'predicate hackery'
