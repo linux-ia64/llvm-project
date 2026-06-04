@@ -479,6 +479,17 @@ def : Pat<(i1 (and PR:$src1, PR:$src2)),
   // if ($aux)  $dst <- 0
   (TPCMPNE (TPCMPEQ (CMPNE r0, r0), r0, r0, $src1), r0, r0,
     (TPCMPNE (CMPEQ r0, r0), r0, r0, $src2))>;
+def : Pat<(i1 (xor PR:$src1, PR:$src2)),
+  // $aux1 <- $src1
+  // if ($src2) $aux1 <- 0
+  // $aux2 <- $src2
+  // if ($src1) $aux2 <- 0
+  // $dst <- $p1
+  // if ($aux2) $dst <- 1
+  (TPCMPEQ
+    (TPCMPNE (TPCMPEQ (CMPNE r0, r0), r0, r0, $src1), r0, r0, $src2),
+    r0, r0,
+    (TPCMPNE (TPCMPEQ (CMPNE r0, r0), r0, r0, $src2), r0, r0, $src1))>;
 
 def ADDIMM14 : AForm<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, s14imm:$imm),
   "adds $dst = $imm, $src1">, isA;
