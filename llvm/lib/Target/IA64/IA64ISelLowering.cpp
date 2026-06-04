@@ -130,7 +130,11 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
                       ISD::SDIVREM})
     setOperationAction(Op, MVT::i64, Expand);
 
-  // Use the default (library/expansion) implementations.
+  // va_start points the va_list at the register save area (custom); va_arg,
+  // va_copy and va_end use the generic load/increment/store expansion. The
+  // va_list is a plain pointer, so the default va_copy/va_end suffice.
+  setOperationAction(ISD::VASTART, MVT::Other, Custom);
+  setOperationAction(ISD::VAARG, MVT::Other, Expand);
   setOperationAction(ISD::VACOPY, MVT::Other, Expand);
   setOperationAction(ISD::VAEND, MVT::Other, Expand);
   setOperationAction(ISD::STACKSAVE, MVT::Other, Expand);
@@ -235,6 +239,48 @@ SDValue IA64TargetLowering::LowerFormalArguments(
       InVals.push_back(
           DAG.getLoad(VA.getValVT(), dl, Chain, FIN, MachinePointerInfo()));
     }
+  }
+
+  // Variadic functions: spill the incoming GP registers not consumed by the
+  // named arguments into a register save area, so va_start/va_arg can walk the
+  // variadic arguments as a contiguous in-memory image. Storing through r39
+  // marks it used, so frame lowering's 'alloc' reserves all eight incoming GP
+  // registers as locals -- the caller's out0-out7 (r32-r39) thus survive for us
+  // to read here, whether or not this particular call passed all eight.
+  // (Variadic arguments that overflow the eight GP registers onto the stack are
+  // not yet handled.)
+  if (isVarArg) {
+    static const MCPhysReg ArgGPRs[] = {IA64::r32, IA64::r33, IA64::r34,
+                                        IA64::r35, IA64::r36, IA64::r37,
+                                        IA64::r38, IA64::r39};
+    unsigned FirstVar = CCInfo.getFirstUnallocated(ArgGPRs);
+    unsigned NumVar = 8 - FirstVar;
+    MachineFrameInfo &MFI = MF.getFrameInfo();
+    // One 8-byte slot per saved register (at least one, so va_start always has
+    // a valid frame index to hand out).
+    int SaveFI = MFI.CreateStackObject((NumVar ? NumVar : 1) * 8, Align(8),
+                                       /*isSpillSlot=*/false);
+    MF.getInfo<IA64FunctionInfo>()->setVarArgsFrameIndex(SaveFI);
+
+    SDValue SaveBase = DAG.getFrameIndex(SaveFI, MVT::i64);
+    SmallVector<SDValue, 8> Stores;
+    for (unsigned i = FirstVar; i < 8; ++i) {
+      Register VReg = RegInfo.createVirtualRegister(&IA64::GRRegClass);
+      RegInfo.addLiveIn(ArgGPRs[i], VReg);
+      // Protect this incoming register from the ar.pfs save: the 'alloc' that
+      // defines it runs before these spills, so it must not land on r32-r39
+      // (see ArgPhysRegs / PSEUDO_ALLOC below).
+      ArgPhysRegs.push_back(ArgGPRs[i]);
+      SDValue Val = DAG.getCopyFromReg(Chain, dl, VReg, MVT::i64);
+      unsigned Offset = (i - FirstVar) * 8;
+      SDValue Addr = DAG.getNode(ISD::ADD, dl, MVT::i64, SaveBase,
+                                 DAG.getConstant(Offset, dl, MVT::i64));
+      Stores.push_back(DAG.getStore(
+          Val.getValue(1), dl, Val, Addr,
+          MachinePointerInfo::getFixedStack(MF, SaveFI, Offset)));
+    }
+    if (!Stores.empty())
+      Chain = DAG.getNode(ISD::TokenFactor, dl, MVT::Other, Stores);
   }
 
   // Materialise the PSEUDO_ALLOC at function entry. Frame lowering later scans
@@ -405,6 +451,26 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   }
 
   return Chain;
+}
+
+SDValue IA64TargetLowering::LowerOperation(SDValue Op,
+                                           SelectionDAG &DAG) const {
+  switch (Op.getOpcode()) {
+  default:
+    report_fatal_error("IA64: unimplemented custom operation lowering");
+  case ISD::VASTART: {
+    // va_start stores the address of the register save area (the first variadic
+    // argument slot, filled in by LowerFormalArguments) into the va_list.
+    MachineFunction &MF = DAG.getMachineFunction();
+    SDLoc dl(Op);
+    SDValue FR = DAG.getFrameIndex(
+        MF.getInfo<IA64FunctionInfo>()->getVarArgsFrameIndex(),
+        getPointerTy(DAG.getDataLayout()));
+    const Value *SV = cast<SrcValueSDNode>(Op.getOperand(2))->getValue();
+    return DAG.getStore(Op.getOperand(0), dl, FR, Op.getOperand(1),
+                        MachinePointerInfo(SV));
+  }
+  }
 }
 
 SDValue IA64TargetLowering::LowerReturn(

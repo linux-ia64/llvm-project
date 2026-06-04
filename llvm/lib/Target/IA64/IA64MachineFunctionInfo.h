@@ -27,6 +27,11 @@ class IA64FunctionInfo : public MachineFunctionInfo {
   // a shared const per-target object, so it belongs here, per-function.
   Register VirtGPR;
 
+  // FrameIndex of the varargs register save area: the slot holding the first
+  // variadic argument. LowerFormalArguments spills the unnamed incoming GP
+  // registers here; LowerVASTART hands its address to va_start.
+  int VarArgsFrameIndex = 0;
+
 public:
   // How many 'out' registers are used by this MachineFunction. Used to compute
   // the appropriate entry in the 'alloc' instruction at the top of the
@@ -37,6 +42,9 @@ public:
 
   Register getVirtGPR() const { return VirtGPR; }
   void setVirtGPR(Register Reg) { VirtGPR = Reg; }
+
+  int getVarArgsFrameIndex() const { return VarArgsFrameIndex; }
+  void setVarArgsFrameIndex(int FI) { VarArgsFrameIndex = FI; }
 
   MachineFunctionInfo *
   clone(BumpPtrAllocator &Allocator, MachineFunction &DestMF,
