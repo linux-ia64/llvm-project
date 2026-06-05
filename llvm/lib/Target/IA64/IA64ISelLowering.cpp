@@ -194,6 +194,14 @@ EVT IA64TargetLowering::getSetCCResultType(const DataLayout & /*DL*/,
   return MVT::i1;
 }
 
+bool IA64TargetLowering::isFMAFasterThanFMulAndFAdd(const MachineFunction & /*MF*/,
+                                                    EVT VT) const {
+  // fma/fms/fnma fuse a*b+c into one single-rounding F-unit op. Only f64: the
+  // FMA patterns are f64 and f32 FMA isn't promoted, so claiming it for f32
+  // would form an unselectable f32 fma node (f32 a*b+c stays fmul+fadd).
+  return VT == MVT::f64;
+}
+
 bool IA64TargetLowering::isFPImmLegal(const APFloat & /*Imm*/, EVT VT,
                                       bool /*ForCodeSize*/) const {
   // Keep f32/f64 constants out of the constant pool: we materialise them from

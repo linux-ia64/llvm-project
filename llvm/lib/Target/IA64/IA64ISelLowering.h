@@ -45,6 +45,12 @@ public:
 
   const char *getTargetNodeName(unsigned Opcode) const override;
 
+  /// IA-64 has a single-rounding fused multiply-add (fma/fms/fnma), so a*b+c
+  /// is cheaper (and more accurate) fused. Returning true makes llvm.fmuladd
+  /// (clang's default -ffp-contract=on form of a*b+c) lower to ISD::FMA.
+  bool isFMAFasterThanFMulAndFAdd(const MachineFunction &MF,
+                                  EVT VT) const override;
+
   /// getSetCCResultType - SETCC produces a predicate (i1) on IA-64.
   EVT getSetCCResultType(const DataLayout &DL, LLVMContext &Context,
                          EVT VT) const override;

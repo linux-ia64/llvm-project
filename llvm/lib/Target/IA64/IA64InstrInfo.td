@@ -590,18 +590,28 @@ def FSUB : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2),
 def FMPY : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2),
   "fmpy $dst = $src1, $src2",
   [(set FP:$dst, (f64 (fmul FP:$src1, FP:$src2)))]>, isF;
+// Fused multiply-add forms. These match the ISD::FMA node (a single-rounding
+// a*b+c), which the DAG only forms when FP contraction is permitted -- so unlike
+// the pre-removal (fadd (fmul ...)) pattern they never silently fuse. fms is
+// a*b-c, fnma is c-a*b (= (-a)*b+c).
 def FMA : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$src3),
-  "fma $dst = $src1, $src2, $src3", []>, isF;
+  "fma $dst = $src1, $src2, $src3",
+  [(set FP:$dst, (f64 (fma FP:$src1, FP:$src2, FP:$src3)))]>, isF;
 def FMS : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$src3),
-  "fms $dst = $src1, $src2, $src3", []>, isF;
+  "fms $dst = $src1, $src2, $src3",
+  [(set FP:$dst, (f64 (fma FP:$src1, FP:$src2, (fneg FP:$src3))))]>, isF;
 def FNMA : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$src3),
-  "fnma $dst = $src1, $src2, $src3", []>, isF;
+  "fnma $dst = $src1, $src2, $src3",
+  [(set FP:$dst, (f64 (fma (fneg FP:$src1), FP:$src2, FP:$src3)))]>, isF;
 def FABS : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src),
-  "fabs $dst = $src", []>, isF;
+  "fabs $dst = $src",
+  [(set FP:$dst, (f64 (fabs FP:$src)))]>, isF;
 def FNEG : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src),
-  "fneg $dst = $src", []>, isF;
+  "fneg $dst = $src",
+  [(set FP:$dst, (f64 (fneg FP:$src)))]>, isF;
 def FNEGABS : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src),
-  "fnegabs $dst = $src", []>, isF;
+  "fnegabs $dst = $src",
+  [(set FP:$dst, (f64 (fneg (fabs FP:$src))))]>, isF;
 
 let Constraints = "$bogussrc = $dst" in {
 def TCFMAS1 : AForm<0x03, 0x0b,
