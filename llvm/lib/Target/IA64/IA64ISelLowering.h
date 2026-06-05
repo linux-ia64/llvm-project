@@ -14,6 +14,7 @@
 #ifndef LLVM_LIB_TARGET_IA64_IA64ISELLOWERING_H
 #define LLVM_LIB_TARGET_IA64_IA64ISELLOWERING_H
 
+#include "llvm/CodeGen/MachineJumpTableInfo.h"
 #include "llvm/CodeGen/TargetLowering.h"
 
 namespace llvm {
@@ -44,6 +45,13 @@ public:
                               const TargetSubtargetInfo &STI);
 
   const char *getTargetNodeName(unsigned Opcode) const override;
+
+  /// Jump-table entries are absolute code pointers (data8 <label>), loaded with
+  /// a plain LD8 and branched to via BRIND -- the simplest path, and it avoids
+  /// the 32-bit label-difference entries (which would need a sext-load).
+  unsigned getJumpTableEncoding() const override {
+    return MachineJumpTableInfo::EK_BlockAddress;
+  }
 
   /// IA-64 has a single-rounding fused multiply-add (fma/fms/fnma), so a*b+c
   /// is cheaper (and more accurate) fused. Returning true makes llvm.fmuladd

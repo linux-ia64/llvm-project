@@ -22,7 +22,9 @@ using namespace llvm;
 MCOperand IA64MCInstLower::lowerSymbolOperand(const MachineOperand &MO,
                                               MCSymbol *Sym) const {
   const MCExpr *Expr = MCSymbolRefExpr::create(Sym, Ctx);
-  if (MO.getOffset())
+  // A jump-table index carries no addend (and getOffset() asserts on it); only
+  // globals/external symbols can have a non-zero offset here.
+  if (!MO.isJTI() && MO.getOffset())
     Expr = MCBinaryExpr::createAdd(
         Expr, MCConstantExpr::create(MO.getOffset(), Ctx), Ctx);
   // A relocation specifier (e.g. IA64::S_LTOFF) is carried on the operand's
@@ -66,6 +68,9 @@ void IA64MCInstLower::Lower(const MachineInstr *MI, MCInst &OutMI) const {
     case MachineOperand::MO_ExternalSymbol:
       MCOp = lowerSymbolOperand(
           MO, Printer.GetExternalSymbolSymbol(MO.getSymbolName()));
+      break;
+    case MachineOperand::MO_JumpTableIndex:
+      MCOp = lowerSymbolOperand(MO, Printer.GetJTISymbol(MO.getIndex()));
       break;
     case MachineOperand::MO_RegisterMask:
       // Call-clobber masks carry no printable operand.

@@ -107,6 +107,24 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
     return;
   }
 
+  case ISD::JumpTable: {
+    // Materialize a jump table's base address the same way as a global: load it
+    // from its GOT slot (addl @ltoff(.LJTI), gp ;; ld8). BR_JT expands to this
+    // base + scaled index, an LD8 of the (absolute) entry, and a BRIND.
+    int JTI = cast<JumpTableSDNode>(N)->getIndex();
+    SDLoc dl(N);
+    SDValue JT = CurDAG->getTargetJumpTable(JTI, MVT::i64, IA64::S_LTOFF);
+    SDValue Slot = SDValue(
+        CurDAG->getMachineNode(IA64::ADDL_GA, dl, MVT::i64,
+                               CurDAG->getRegister(IA64::r1, MVT::i64), JT),
+        0);
+    SDNode *Ld = CurDAG->getMachineNode(IA64::LD8, dl, MVT::i64, MVT::Other,
+                                        Slot, CurDAG->getEntryNode());
+    ReplaceUses(SDValue(N, 0), SDValue(Ld, 0));
+    CurDAG->RemoveDeadNode(N);
+    return;
+  }
+
   case ISD::BR: {
     // br bb  ->  (p0) brl.cond bb.  The branch instructions carry an i64imm
     // target operand (not a tablegen 'bb' operand), so they are hand-selected
