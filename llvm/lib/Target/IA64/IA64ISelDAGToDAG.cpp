@@ -210,11 +210,12 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
 
   case ISD::LOAD: {
     // Select by the memory type. IA-64 narrow integer loads zero-extend into
-    // the 64-bit GR, which matches zext/any-extend loads (fib's only kind); a
-    // true sext load would need a following sxt and is deferred. The address is
-    // a single register; a FrameIndex base is materialized by the FrameIndex
-    // case above and resolved by eliminateFrameIndex. (i1/bool loads, with the
-    // pre-removal compare-against-zero trick, are also deferred.)
+    // the 64-bit GR, which matches zext/any-extend loads; a sign-extending load
+    // (SEXTLOAD) follows the LDx with the matching sxt (handled below). An i1
+    // (bool) load is the compare-against-zero trick (LD1 + cmp.ne, handled
+    // above). The address is a single register; a FrameIndex base is
+    // materialized by the FrameIndex case above and resolved by
+    // eliminateFrameIndex.
     LoadSDNode *LD = cast<LoadSDNode>(N);
     SDValue Chain = LD->getChain();
     SDValue Address = LD->getBasePtr();
@@ -245,6 +246,28 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
     case MVT::f64: Opc = IA64::LDF8; break;
     default:
       report_fatal_error("IA64: cannot select a load of this type");
+    }
+    // A sign-extending narrow load: the LDx above zero-extends into the 64-bit
+    // GR, so follow it with the matching sxt to sign-extend. Without this a
+    // signed value (e.g. a negative 'int' used in a signed compare -- a Lua
+    // stack index) is read as a large positive number and the compare goes wrong.
+    if (LD->getExtensionType() == ISD::SEXTLOAD) {
+      unsigned SxtOpc;
+      switch (LD->getMemoryVT().getSimpleVT().SimpleTy) {
+      case MVT::i8:  SxtOpc = IA64::SXT1; break;
+      case MVT::i16: SxtOpc = IA64::SXT2; break;
+      case MVT::i32: SxtOpc = IA64::SXT4; break;
+      default:
+        report_fatal_error("IA64: unexpected sign-extending load width");
+      }
+      SDNode *Ld = CurDAG->getMachineNode(Opc, dl, MVT::i64, MVT::Other,
+                                          Address, Chain);
+      SDNode *Sxt =
+          CurDAG->getMachineNode(SxtOpc, dl, MVT::i64, SDValue(Ld, 0));
+      ReplaceUses(SDValue(N, 0), SDValue(Sxt, 0)); // sign-extended value
+      ReplaceUses(SDValue(N, 1), SDValue(Ld, 1));  // chain
+      CurDAG->RemoveDeadNode(N);
+      return;
     }
     CurDAG->SelectNodeTo(N, Opc, N->getValueType(0), MVT::Other, Address, Chain);
     return;
