@@ -708,6 +708,7 @@ def : Pat<(i64 (bitconvert (f64 FP:$src))), (GETFD FP:$src)>;
 def : Pat<(f64 (bitconvert (i64 GR:$src))), (SETFD GR:$src)>;
 
 let isTerminator = 1, isBranch = 1 in {
+  let isBarrier = 1 in
   def BRL_NOTCALL : RawForm<0x03, 0xb0, (outs), (ins i64imm:$dst),
     "(p0) brl.cond.sptk $dst">, isB;
   def BRLCOND_NOTCALL : RawForm<0x03, 0xb0, (outs), (ins PR:$qp, i64imm:$dst),
