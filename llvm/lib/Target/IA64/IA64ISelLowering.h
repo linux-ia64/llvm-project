@@ -53,6 +53,12 @@ public:
     return MachineJumpTableInfo::EK_BlockAddress;
   }
 
+  /// The entries above are absolute, so BR_JT must branch straight to the loaded
+  /// entry -- it must NOT add the table base back. The default keys this off
+  /// isPositionIndependent() (true here, since the ABI is PIC), which would make
+  /// the expansion compute base+entry and jump to garbage; force it off.
+  bool isJumpTableRelative() const override { return false; }
+
   /// IA-64 has a single-rounding fused multiply-add (fma/fms/fnma), so a*b+c
   /// is cheaper (and more accurate) fused. Returning true makes llvm.fmuladd
   /// (clang's default -ffp-contract=on form of a*b+c) lower to ISD::FMA.

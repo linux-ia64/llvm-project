@@ -218,6 +218,23 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
     LoadSDNode *LD = cast<LoadSDNode>(N);
     SDValue Chain = LD->getChain();
     SDValue Address = LD->getBasePtr();
+    SDLoc dl(N);
+
+    // Loading a predicate: a predicate can't be loaded from memory directly, so
+    // load the bool byte and test it != 0 (ld1 ;; cmp.ne dst = byte, r0).
+    if (LD->getMemoryVT() == MVT::i1) {
+      SDNode *Byte = CurDAG->getMachineNode(IA64::LD1, dl, MVT::i64, MVT::Other,
+                                            Address, Chain);
+      SDValue Pred = SDValue(
+          CurDAG->getMachineNode(IA64::CMPNE, dl, MVT::i1, SDValue(Byte, 0),
+                                 CurDAG->getRegister(IA64::r0, MVT::i64)),
+          0);
+      ReplaceUses(SDValue(N, 0), Pred);            // the i1 value
+      ReplaceUses(SDValue(N, 1), SDValue(Byte, 1)); // the chain
+      CurDAG->RemoveDeadNode(N);
+      return;
+    }
+
     unsigned Opc;
     switch (LD->getMemoryVT().getSimpleVT().SimpleTy) {
     case MVT::i8:  Opc = IA64::LD1;  break;
@@ -241,6 +258,25 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
     SDValue Chain = ST->getChain();
     SDValue Value = ST->getValue();
     SDValue Address = ST->getBasePtr();
+    SDLoc dl(N);
+
+    // Storing a predicate: a predicate can't be stored to memory directly, so
+    // widen it to a 0/1 GR (the zext-PR sequence) and store one byte (st1).
+    if (Value.getValueType() == MVT::i1) {
+      SDValue Zero = SDValue(
+          CurDAG->getMachineNode(IA64::ADDS, dl, MVT::i64,
+                                 CurDAG->getRegister(IA64::r0, MVT::i64),
+                                 CurDAG->getTargetConstant(0, dl, MVT::i64)),
+          0);
+      SDValue Wide = SDValue(
+          CurDAG->getMachineNode(IA64::TPCADDS, dl, MVT::i64, Zero,
+                                 CurDAG->getTargetConstant(1, dl, MVT::i64),
+                                 Value),
+          0);
+      CurDAG->SelectNodeTo(N, IA64::ST1, MVT::Other, Address, Wide, Chain);
+      return;
+    }
+
     unsigned Opc;
     if (!ST->isTruncatingStore()) {
       switch (Value.getValueType().getSimpleVT().SimpleTy) {

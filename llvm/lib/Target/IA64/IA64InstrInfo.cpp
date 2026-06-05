@@ -34,11 +34,20 @@ void IA64InstrInfo::copyPhysReg(MachineBasicBlock &MBB,
                                 bool /*RenamableDest*/,
                                 bool /*RenamableSrc*/) const {
   if (IA64::PRRegClass.contains(DestReg)) {
-    // Copying a predicate: (SrcReg) DestReg = cmp.eq.unc(r0, r0).
-    BuildMI(MBB, I, DL, get(IA64::PCMPEQUNC), DestReg)
-        .addReg(IA64::r0)
-        .addReg(IA64::r0)
-        .addReg(SrcReg, getKillRegState(KillSrc));
+    if (IA64::PRRegClass.contains(SrcReg)) {
+      // Predicate -> predicate: (SrcReg) DestReg = cmp.eq.unc(r0, r0). The .unc
+      // form writes DestReg in both cases (1 when SrcReg holds, else 0).
+      BuildMI(MBB, I, DL, get(IA64::PCMPEQUNC), DestReg)
+          .addReg(IA64::r0)
+          .addReg(IA64::r0)
+          .addReg(SrcReg, getKillRegState(KillSrc));
+    } else {
+      // General register -> predicate: DestReg = (SrcReg != 0), the inverse of
+      // the GR<-PR copy below. There is no 'mov PR = GR'.
+      BuildMI(MBB, I, DL, get(IA64::CMPNE), DestReg)
+          .addReg(SrcReg, getKillRegState(KillSrc))
+          .addReg(IA64::r0);
+    }
     return;
   }
 
@@ -54,6 +63,19 @@ void IA64InstrInfo::copyPhysReg(MachineBasicBlock &MBB,
     // Loading a branch register (b6) for an indirect call: 'mov b6 = rN'. Like
     // ar.pfs, b6 is in its own class, so the generic GR MOV below cannot name it.
     BuildMI(MBB, I, DL, get(IA64::MOV_TO_BR), DestReg)
+        .addReg(SrcReg, getKillRegState(KillSrc));
+    return;
+  }
+
+  if (IA64::GRRegClass.contains(DestReg) && IA64::PRRegClass.contains(SrcReg)) {
+    // Reading a predicate into a general register: materialize its 0/1 boolean
+    // value (there is no 'mov GR = PR'). DestReg = 0 ;; (SrcReg) DestReg = 1 --
+    // the same zext-PR sequence used in the td. The tied TPCADDS adds 1 only
+    // when the predicate holds.
+    BuildMI(MBB, I, DL, get(IA64::ADDS), DestReg).addReg(IA64::r0).addImm(0);
+    BuildMI(MBB, I, DL, get(IA64::TPCADDS), DestReg)
+        .addReg(DestReg)
+        .addImm(1)
         .addReg(SrcReg, getKillRegState(KillSrc));
     return;
   }
