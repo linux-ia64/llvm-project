@@ -752,8 +752,8 @@ let isCall = 1, /* isTerminator = 1, isBranch = 1, */
   def BRCALL_IPREL_ES : RawForm<0x03, 0xb0, (outs), (ins calltarget:$dst),
   "br.call.sptk rp = $dst">, isB;       // FIXME: teach llvm about branch regs?
 // calls through a function descriptor
-  def BRCALL_INDIRECT : RawForm<0x03, 0xb0, (outs), (ins GR:$branchreg),
-  "br.call.sptk rp = $branchreg">, isB; // FIXME: teach llvm about branch regs?
+  def BRCALL_INDIRECT : RawForm<0x03, 0xb0, (outs), (ins BR:$branchreg),
+  "br.call.sptk rp = $branchreg">, isB;
   def BRLCOND_CALL : RawForm<0x03, 0xb0, (outs), (ins PR:$qp, i64imm:$dst),
     "($qp) brl.cond.call.sptk $dst">, isB;
   def BRCOND_CALL : RawForm<0x03, 0xb0, (outs), (ins PR:$qp, GR:$dst),
