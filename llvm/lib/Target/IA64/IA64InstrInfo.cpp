@@ -50,6 +50,14 @@ void IA64InstrInfo::copyPhysReg(MachineBasicBlock &MBB,
     return;
   }
 
+  if (IA64::BRRegClass.contains(DestReg)) {
+    // Loading a branch register (b6) for an indirect call: 'mov b6 = rN'. Like
+    // ar.pfs, b6 is in its own class, so the generic GR MOV below cannot name it.
+    BuildMI(MBB, I, DL, get(IA64::MOV_TO_BR), DestReg)
+        .addReg(SrcReg, getKillRegState(KillSrc));
+    return;
+  }
+
   // Otherwise MOV works for both general and FP registers.
   BuildMI(MBB, I, DL, get(IA64::MOV), DestReg)
       .addReg(SrcReg, getKillRegState(KillSrc));

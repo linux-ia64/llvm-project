@@ -381,6 +381,10 @@ def MOV : AForm<0x03, 0x0b, (outs GR:$dst), (ins GR:$src), "mov $dst = $src">, i
 // GR->GR MOV above; copyPhysReg emits it for copies into AR_PFS.
 def MOV_TO_AR_PFS : AForm<0x03, 0x0b, (outs AR:$dst), (ins GR:$src),
   "mov $dst = $src">, isA;
+// Move a general register into a branch register: 'mov b6 = rN'. Like ar.pfs
+// above, b6 is in its own (BR) class; copyPhysReg emits this for copies into it.
+def MOV_TO_BR : AForm<0x03, 0x0b, (outs BR:$dst), (ins GR:$src),
+  "mov $dst = $src">, isA;
 def FMOV : AForm<0x03, 0x0b, (outs FP:$dst), (ins FP:$src),
   "mov $dst = $src">, isF; // XXX: there _is_ no fmov
 def PMOV : AForm<0x03, 0x0b, (outs GR:$dst), (ins GR:$src, PR:$qp),

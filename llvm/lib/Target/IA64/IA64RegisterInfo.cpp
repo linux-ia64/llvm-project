@@ -78,6 +78,7 @@ BitVector IA64RegisterInfo::getReservedRegs(const MachineFunction &MF) const {
   // lost). Reserved, the restore copy 'mov ar.pfs = rN' survives and the
   // save vreg is allocated to a real scratch GR (r3 for a leaf function).
   Reserved.set(IA64::AR_PFS);
+  Reserved.set(IA64::B6);  // indirect-call branch target (set up per call site)
   return Reserved;
 }
 

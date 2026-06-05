@@ -11,8 +11,8 @@
 // Scope note: LowerFormalArguments / LowerReturn (Stage 1) and LowerCall
 // (Stage C) are implemented for the integer, direct-call ABI that fib needs:
 // args in r32-r39 (incoming) / out0-out7 (outgoing), return in r8, gp/sp/rp
-// saved around calls. Indirect / function-descriptor calls, >8 or FP/aggregate
-// arguments, varargs and TLS remain deferred.
+// saved around calls; indirect calls go through the function descriptor
+// (entry point into b6, callee gp into r1). TLS remains deferred.
 //
 //===----------------------------------------------------------------------===//
 
@@ -357,6 +357,23 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
 
   Chain = DAG.getCALLSEQ_START(Chain, NumBytes, 0, dl);
 
+  // An indirect callee is a function pointer: not a GlobalAddress/ExternalSymbol
+  // but an ordinary i64 value pointing at a function descriptor { entry, gp }.
+  // Read the descriptor here, while Chain is still a plain (unglued) chain and
+  // before the gp save below latches the caller's r1; the entry point and the
+  // callee's gp are installed into b6 / r1 just before the call further down.
+  bool IsIndirect = !isa<GlobalAddressSDNode>(Callee) &&
+                    !isa<ExternalSymbolSDNode>(Callee);
+  SDValue EntryPoint, NewGp;
+  if (IsIndirect) {
+    EntryPoint = DAG.getLoad(MVT::i64, dl, Chain, Callee, MachinePointerInfo());
+    Chain = EntryPoint.getValue(1);
+    SDValue GpAddr = DAG.getNode(ISD::ADD, dl, MVT::i64, Callee,
+                                 DAG.getIntPtrConstant(8, dl));
+    NewGp = DAG.getLoad(MVT::i64, dl, Chain, GpAddr, MachinePointerInfo());
+    Chain = NewGp.getValue(1);
+  }
+
   // Collect the (out-register, value) pairs to copy in just before the call,
   // and the stores for any arguments that overflow onto the outgoing stack.
   SmallVector<std::pair<unsigned, SDValue>, 8> RegsToPass;
@@ -440,10 +457,18 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
     InGlue = Chain.getValue(1);
   }
 
-  // Make a direct callee a target node so the generic selector leaves it alone;
-  // the IA64ISD::BRCALL selection consumes it as the br.call target. (Indirect
-  // / function-descriptor calls are deferred.)
-  if (GlobalAddressSDNode *G = dyn_cast<GlobalAddressSDNode>(Callee))
+  // Set up the br.call target. For an indirect call, install the callee's gp
+  // (r1) and the entry point (b6) read from the descriptor above, glued in just
+  // after the argument copies; BRCALL then branches to b6. For a direct call,
+  // make the callee a target node so the generic selector leaves it alone and
+  // the IA64ISD::BRCALL selection consumes it as the br.call target.
+  if (IsIndirect) {
+    Chain = DAG.getCopyToReg(Chain, dl, IA64::r1, NewGp, InGlue);
+    InGlue = Chain.getValue(1);
+    Chain = DAG.getCopyToReg(Chain, dl, IA64::B6, EntryPoint, InGlue);
+    InGlue = Chain.getValue(1);
+    Callee = DAG.getRegister(IA64::B6, MVT::i64);
+  } else if (GlobalAddressSDNode *G = dyn_cast<GlobalAddressSDNode>(Callee))
     Callee = DAG.getTargetGlobalAddress(G->getGlobal(), dl, MVT::i64);
   else if (ExternalSymbolSDNode *E = dyn_cast<ExternalSymbolSDNode>(Callee))
     Callee = DAG.getTargetExternalSymbol(E->getSymbol(), MVT::i64);

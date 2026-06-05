@@ -133,8 +133,9 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
     // arg-reg uses..., [glue]) and leaves the callee as a
     // Target{GlobalAddress,ExternalSymbol}. A direct call selects to
     // 'br.call rp = <target>'; the argument-register operands carry through as
-    // the call's (precise) implicit uses. Indirect / function-descriptor calls
-    // (BRCALL_INDIRECT through b6) are deferred -- fib only calls directly.
+    // the call's (precise) implicit uses. An indirect / function-descriptor
+    // call arrives with the callee already in b6 (a Register operand, set up by
+    // LowerCall) and selects to BRCALL_INDIRECT.
     SDValue Chain = N->getOperand(0);
     SDValue Callee = N->getOperand(1);
 
@@ -150,8 +151,12 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
       Opc = IA64::BRCALL_IPREL_GA;
     else if (Callee.getOpcode() == ISD::TargetExternalSymbol)
       Opc = IA64::BRCALL_IPREL_ES;
+    else if (Callee.getOpcode() == ISD::Register)
+      // Indirect call: LowerCall already loaded the entry point into b6 (the
+      // Register operand here) and the callee's gp into r1. 'br.call rp = b6'.
+      Opc = IA64::BRCALL_INDIRECT;
     else
-      report_fatal_error("IA64: only direct calls are supported");
+      report_fatal_error("IA64: unhandled call target");
 
     // Machine-node operands: (calltarget, arg-reg uses..., chain, [glue]);
     // results: (chain, glue).

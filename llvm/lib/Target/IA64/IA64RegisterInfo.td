@@ -444,6 +444,10 @@ def GR03 : RegisterClass<"IA64", [i64], 64, (add r3, r2, r0, r1)>;
 
 def AR : RegisterClass<"IA64", [i64], 64, (add AR_PFS)>;
 
+// Branch registers. b6 holds the target of an indirect (function-descriptor)
+// call; like AR it gets its own class so MOV_TO_BR can name it.
+def BR : RegisterClass<"IA64", [i64], 64, (add B6)>;
+
 
 // these are the scratch (+stacked) FP registers
 
