@@ -236,7 +236,8 @@ SDValue IA64TargetLowering::LowerFormalArguments(
 
       Register VReg = RegInfo.createVirtualRegister(RC);
       RegInfo.addLiveIn(VA.getLocReg(), VReg);
-      ArgPhysRegs.push_back(VA.getLocReg());
+      if (Ins[VA.getValNo()].Used)
+        ArgPhysRegs.push_back(VA.getLocReg());
       SDValue ArgValue = DAG.getCopyFromReg(Chain, dl, VReg, RegVT);
 
       // If the argument was widened to fill the register, narrow it back to
