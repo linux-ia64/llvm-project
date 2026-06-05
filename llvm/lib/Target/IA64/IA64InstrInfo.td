@@ -441,7 +441,8 @@ def ADJUSTCALLSTACKUP : PseudoInstIA64_DAG<(outs),
                         "// ADJUSTCALLSTACKUP",
                         [(callseq_end timm:$amt1, timm:$amt2)]>;
 }
-def PSEUDO_ALLOC : PseudoInstIA64<(outs), (ins GR:$foo), "// PSEUDO_ALLOC">;
+def PSEUDO_ALLOC : PseudoInstIA64<(outs GR:$dst), (ins variable_ops),
+                                  "// PSEUDO_ALLOC">;
 
 def ALLOC : AForm<0x03, 0x0b,
   (outs GR:$dst), (ins i8imm:$inputs, i8imm:$locals, i8imm:$outputs, i8imm:$rotating),
