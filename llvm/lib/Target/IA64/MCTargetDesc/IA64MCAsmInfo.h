@@ -37,6 +37,14 @@ enum Specifier : uint16_t {
   // @ltoff(sym): the gp-relative offset of the symbol's linkage-table (GOT)
   // entry; emitted for the ADDL_GA + LD8 global-address sequence.
   S_LTOFF = MCSymbolRefExpr::FirstTargetSpecifier,
+  // @fptr(sym): the address of the function descriptor { entry, gp } for a
+  // function symbol -- what a C function pointer must hold. Emitted for
+  // function pointers stored in data (data8 @fptr(f)).
+  S_FPTR,
+  // Marker flag (never stored in an MCSpecifierExpr): a function address loaded
+  // through the GOT needs the descriptor, so lowerSymbolOperand nests the two
+  // and prints @ltoff(@fptr(f)).
+  S_LTOFF_FPTR,
 };
 
 StringRef getSpecifierName(uint16_t S);

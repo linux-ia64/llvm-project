@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "IA64MCInstLower.h"
+#include "MCTargetDesc/IA64MCAsmInfo.h"
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineInstr.h"
@@ -25,9 +26,16 @@ MCOperand IA64MCInstLower::lowerSymbolOperand(const MachineOperand &MO,
     Expr = MCBinaryExpr::createAdd(
         Expr, MCConstantExpr::create(MO.getOffset(), Ctx), Ctx);
   // A relocation specifier (e.g. IA64::S_LTOFF) is carried on the operand's
-  // target flags; wrap the symbol so it prints as "@ltoff(sym)".
-  if (unsigned Specifier = MO.getTargetFlags())
+  // target flags; wrap the symbol so it prints as "@ltoff(sym)". S_LTOFF_FPTR
+  // is a marker for a function address loaded through the GOT: nest the two so
+  // it prints @ltoff(@fptr(sym)), i.e. the GOT entry holds the descriptor.
+  unsigned Specifier = MO.getTargetFlags();
+  if (Specifier == IA64::S_LTOFF_FPTR) {
+    Expr = MCSpecifierExpr::create(Expr, IA64::S_FPTR, Ctx);
+    Expr = MCSpecifierExpr::create(Expr, IA64::S_LTOFF, Ctx);
+  } else if (Specifier) {
     Expr = MCSpecifierExpr::create(Expr, Specifier, Ctx);
+  }
   return MCOperand::createExpr(Expr);
 }
 

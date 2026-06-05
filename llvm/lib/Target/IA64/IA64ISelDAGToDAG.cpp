@@ -26,6 +26,7 @@
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/CodeGen/SelectionDAGISel.h"
 #include "llvm/CodeGen/SelectionDAGNodes.h"
+#include "llvm/IR/Function.h"
 #include "llvm/Support/ErrorHandling.h"
 
 using namespace llvm;
@@ -89,9 +90,12 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
     SDLoc dl(N);
     // Tag the symbol with the @ltoff specifier (carried on the target flags);
     // IA64MCInstLower turns it into the printed "@ltoff(sym)" so gas builds the
-    // GOT entry the LD8 below reads.
+    // GOT entry the LD8 below reads. A function's address is its descriptor, so
+    // the GOT entry must hold @ltoff(@fptr(f)) (the descriptor address), not the
+    // raw entry point -- an indirect call dereferences it as { entry, gp }.
+    unsigned Spec = isa<Function>(GV) ? IA64::S_LTOFF_FPTR : IA64::S_LTOFF;
     SDValue GA = CurDAG->getTargetGlobalAddress(GV, dl, MVT::i64, /*offset=*/0,
-                                                IA64::S_LTOFF);
+                                                Spec);
     SDValue Slot = SDValue(
         CurDAG->getMachineNode(IA64::ADDL_GA, dl, MVT::i64,
                                CurDAG->getRegister(IA64::r1, MVT::i64), GA),
