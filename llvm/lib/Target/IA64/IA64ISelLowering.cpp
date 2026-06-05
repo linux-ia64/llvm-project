@@ -75,7 +75,7 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
   addRegisterClass(MVT::i1, &IA64::PRRegClass);
 
   // IA-64 uses SELECT, not SELECT_CC, and has no native BR_CC / jump tables.
-  setOperationAction(ISD::BRIND, MVT::Other, Expand);
+  setOperationAction(ISD::BRIND, MVT::Other, Legal);
   setOperationAction(ISD::BR_JT, MVT::Other, Expand);
 
   // BR_CC / SELECT_CC must be keyed by the *compare operand* value type, not

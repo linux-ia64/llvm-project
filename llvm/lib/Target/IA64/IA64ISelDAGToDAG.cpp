@@ -132,6 +132,21 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
     return;
   }
 
+  case ISD::BRIND: {
+    // brind addr  ->  mov b6 = addr ;; br.cond.sptk b6  (computed goto).
+    // Move the target address into branch register b6, glued to the branch so
+    // the copy stays adjacent. Operands: (chain, target address).
+    SDLoc dl(N);
+    SDValue Chain = N->getOperand(0);
+    SDValue Target = N->getOperand(1);
+    SDValue Copy =
+        CurDAG->getCopyToReg(Chain, dl, IA64::B6, Target, SDValue());
+    CurDAG->SelectNodeTo(N, IA64::BRINDIRECT, MVT::Other,
+                         CurDAG->getRegister(IA64::B6, MVT::i64),
+                         Copy.getValue(0), Copy.getValue(1));
+    return;
+  }
+
   case IA64ISD::BRCALL: {
     // The call hack: LowerCall builds IA64ISD::BRCALL (chain, callee,
     // arg-reg uses..., [glue]) and leaves the callee as a

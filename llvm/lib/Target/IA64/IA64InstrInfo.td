@@ -743,6 +743,11 @@ let isTerminator = 1, isBranch = 1 in {
     "($qp) brl.cond.sptk $dst">, isB;
   def BRCOND_NOTCALL : RawForm<0x03, 0xb0, (outs), (ins PR:$qp, GR:$dst),
     "($qp) br.cond.sptk $dst">, isB;
+  // Indirect branch (computed goto): the target address is moved into a branch
+  // register (b6) and branched to. Unconditional, so a barrier.
+  let isBarrier = 1, isIndirectBranch = 1 in
+  def BRINDIRECT : RawForm<0x03, 0xb0, (outs), (ins BR:$target),
+    "(p0) br.cond.sptk $target">, isB;
 }
 
 let isCall = 1, /* isTerminator = 1, isBranch = 1, */
