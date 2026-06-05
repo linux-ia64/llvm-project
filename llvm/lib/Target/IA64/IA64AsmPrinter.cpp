@@ -15,9 +15,12 @@
 
 #include "IA64.h"
 #include "IA64MCInstLower.h"
+#include "MCTargetDesc/IA64MCAsmInfo.h"
 #include "TargetInfo/IA64TargetInfo.h"
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/CodeGen/MachineInstr.h"
+#include "llvm/IR/Function.h"
+#include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/TargetRegistry.h"
@@ -40,6 +43,8 @@ public:
 
   void emitStartOfAsmFile(Module &M) override;
   void emitInstruction(const MachineInstr *MI) override;
+  const MCExpr *lowerConstant(const Constant *CV, const Constant *BaseCV,
+                              uint64_t Offset) override;
 };
 } // end anonymous namespace
 
@@ -58,6 +63,19 @@ void IA64AsmPrinter::emitInstruction(const MachineInstr *MI) {
   MCInst TmpInst;
   Lower.Lower(MI, TmpInst);
   EmitToStreamer(*OutStreamer, TmpInst);
+}
+
+const MCExpr *IA64AsmPrinter::lowerConstant(const Constant *CV,
+                                            const Constant *BaseCV,
+                                            uint64_t Offset) {
+  // A function pointer stored in data is the address of the function's
+  // descriptor { entry, gp }, not its entry point: emit data8 @fptr(f). The
+  // linker materializes the .opd descriptor; an indirect call dereferences it.
+  if (const auto *F = dyn_cast<Function>(CV)) {
+    const MCExpr *E = MCSymbolRefExpr::create(getSymbol(F), OutContext);
+    return MCSpecifierExpr::create(E, IA64::S_FPTR, OutContext);
+  }
+  return AsmPrinter::lowerConstant(CV, BaseCV, Offset);
 }
 
 extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void
