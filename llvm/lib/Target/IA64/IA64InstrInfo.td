@@ -237,9 +237,17 @@ def XMAHUD : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$
 // (setf.sig), multiply-add with F0 (the fixed +0.0) as the addend so the
 // result is just the product -- xma.l yields the low 64 bits, which is exactly
 // the low-half integer 'mul' -- then move the result back to a GR (getf.sig).
-// (mulhs/mulhu via xma.h/xma.hu are deferred; not needed yet.)
+// The high 64 bits of a 64x64 product come from the same pipe: xma.hu for the
+// unsigned high (mulhu), xma.h for the signed high (mulhs). These feed clang's
+// divide-by-constant strength reduction (a magic-number multiply-high).
 def : Pat<(mul GR:$src1, GR:$src2),
           (GETFSIGD (f64 (XMALD (f64 (SETFSIGD GR:$src1)),
+                                (f64 (SETFSIGD GR:$src2)), (f64 F0))))>;
+def : Pat<(mulhu GR:$src1, GR:$src2),
+          (GETFSIGD (f64 (XMAHUD (f64 (SETFSIGD GR:$src1)),
+                                 (f64 (SETFSIGD GR:$src2)), (f64 F0))))>;
+def : Pat<(mulhs GR:$src1, GR:$src2),
+          (GETFSIGD (f64 (XMAHD (f64 (SETFSIGD GR:$src1)),
                                 (f64 (SETFSIGD GR:$src2)), (f64 F0))))>;
 
 def AND   : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, GR:$src2),
