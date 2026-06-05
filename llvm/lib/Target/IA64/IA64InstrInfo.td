@@ -499,8 +499,11 @@ def EXTRU : AForm<0x03, 0x0b,
   (outs GR:$dst), (ins GR:$src1, u6imm:$imm1, u6imm:$imm2),
   "extr.u $dst = $src1, $imm1, $imm2">, isI;
 
-// extend PR into GR
-def : Pat<(zext PR:$src), (TPCADDS (ADDS r0, 0), 1, PR:$src)>;
+// extend PR into GR. zext/anyext set the low bit (0/1); sext fills the whole
+// register, since for a 1-bit value the bit is the sign (set -> all-ones, -1).
+def : Pat<(zext PR:$src),   (TPCADDS (ADDS r0, 0),  1, PR:$src)>;
+def : Pat<(anyext PR:$src), (TPCADDS (ADDS r0, 0),  1, PR:$src)>;
+def : Pat<(sext PR:$src),   (TPCADDS (ADDS r0, 0), -1, PR:$src)>;
 
 // truncate GR into PR: the predicate is the low bit (extr.u then compare != 0)
 def : Pat<(i1 (trunc GR:$src)), (CMPNE (EXTRU GR:$src, 0, 1), r0)>;
