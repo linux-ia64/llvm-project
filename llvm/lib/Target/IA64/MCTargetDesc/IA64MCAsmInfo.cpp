@@ -53,6 +53,13 @@ IA64MCAsmInfo::IA64MCAsmInfo(const Triple &TheTriple,
 
   ZeroDirective = "\t.skip\t";
   AsciiDirective = "\tstring\t";
+
+  // Emit source-level DWARF (.file/.loc) so the line table maps PCs back to the
+  // C source rather than to the temporary .s we hand to GNU 'as'. Without this
+  // the AsmPrinter suppresses all .loc directives, and the external assembler --
+  // still invoked with -g -- can only synthesize a line table for the assembly
+  // file it reads, so gdb shows e.g. "ldo-cbe475.s:257" instead of "ldo.c:NNN".
+  SupportsDebugInformation = true;
 }
 
 // Print a relocation specifier as "@name(subexpr)", the form GNU 'as' for
