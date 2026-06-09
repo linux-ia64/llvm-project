@@ -31,7 +31,15 @@ IA64RegisterInfo::IA64RegisterInfo() : IA64GenRegisterInfo(IA64::rp) {}
 
 const MCPhysReg *
 IA64RegisterInfo::getCalleeSavedRegs(const MachineFunction * /*MF*/) const {
-  static const MCPhysReg CalleeSavedRegs[] = {IA64::r5, 0};
+  // r4-r7 are the static callee-saved general registers (IA-64 SysV psABI);
+  // glibc's setjmp/longjmp save and restore them via the jmpbuf. The backend
+  // rarely allocates them (they trail the GR allocation order), but LowerCall
+  // parks gp/sp/rp in r4/r6/r7 across calls in returns_twice (setjmp) functions
+  // -- which only works if every function that touches them saves/restores them,
+  // i.e. they must be true CSRs so a nested setjmp call does not clobber an
+  // outer frame's parked values. (r5 is also the frame pointer.)
+  static const MCPhysReg CalleeSavedRegs[] = {IA64::r4, IA64::r5, IA64::r6,
+                                              IA64::r7, 0};
   return CalleeSavedRegs;
 }
 

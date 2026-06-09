@@ -418,6 +418,13 @@ def GR : RegisterClass<"IA64", [i64], 64,
         r112, r113, r114, r115, r116, r117, r118, r119,
         // last 16 are special (look down)
         r120, r121, r122, r123, r124, r125, r126, r127,
+        // r4/r6/r7: the static callee-saved GRs (getCalleeSavedRegs). They trail
+        // the order so the allocator reaches them only under heavy pressure, but
+        // are class members so copyPhysReg treats them as GRs -- LowerCall parks
+        // gp/sp/rp in them across a call in a returns_twice (setjmp) function,
+        // where they survive a longjmp re-entry (glibc setjmp/longjmp save and
+        // restore them via the jmpbuf).
+        r4, r6, r7,
         r0, r1, r2, r5, r12, r13, r22, rp)>;
 // The pre-removal backend hid the 'out' registers and the reserved registers
 // (r0,r1,r2,r5,r12,r13,r22,rp) from the allocation order via RegisterClass

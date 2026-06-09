@@ -460,6 +460,29 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   Chain = RPSave.getValue(1);
   InGlue = RPSave.getValue(2);
 
+  // In a function that calls setjmp (and so may be re-entered by longjmp), the
+  // save vregs above cannot be allowed to land in stacked locals: longjmp brings
+  // the stacked frame back only to its last-written values, and the register
+  // allocator reuses the save register right after the (singly-modeled) restore
+  // -- which sits before the setjmp-result branch, i.e. exactly the longjmp
+  // re-entry point -- so the restored value is garbage (observed: gp = 0, then a
+  // stale slot address). Park gp/sp/rp instead in the static callee-saved
+  // registers r4/r6/r7, which glibc's setjmp/longjmp save and restore through the
+  // jmpbuf: on a longjmp re-entry they come back holding the setjmp-time
+  // gp/sp/rp, and any reuse after the restore is harmless because longjmp
+  // overwrites it. Because they are true CSRs (getCalleeSavedRegs), a nested
+  // setjmp call saves and restores them, so it cannot clobber an outer frame's
+  // parked values. The restore below reads them back out of r4/r6/r7.
+  bool ReturnsTwice = MF.exposesReturnsTwice();
+  if (ReturnsTwice) {
+    Chain = DAG.getCopyToReg(Chain, dl, IA64::r4, GPSave, InGlue);
+    InGlue = Chain.getValue(1);
+    Chain = DAG.getCopyToReg(Chain, dl, IA64::r6, SPSave, InGlue);
+    InGlue = Chain.getValue(1);
+    Chain = DAG.getCopyToReg(Chain, dl, IA64::r7, RPSave, InGlue);
+    InGlue = Chain.getValue(1);
+  }
+
   // Copy the outgoing arguments into their out registers, glued before the call.
   for (auto &R : RegsToPass) {
     Chain = DAG.getCopyToReg(Chain, dl, R.first, R.second, InGlue);
@@ -492,7 +515,20 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   Chain = DAG.getNode(IA64ISD::BRCALL, dl, NodeTys, Ops);
   InGlue = Chain.getValue(1);
 
-  // Restore gp/sp/rp after the call.
+  // Restore gp/sp/rp after the call. For a returns_twice function read them back
+  // out of r4/r6/r7 (longjmp-safe, see the save above); otherwise from the save
+  // vregs directly.
+  if (ReturnsTwice) {
+    GPSave = DAG.getCopyFromReg(Chain, dl, IA64::r4, MVT::i64, InGlue);
+    Chain = GPSave.getValue(1);
+    InGlue = GPSave.getValue(2);
+    SPSave = DAG.getCopyFromReg(Chain, dl, IA64::r6, MVT::i64, InGlue);
+    Chain = SPSave.getValue(1);
+    InGlue = SPSave.getValue(2);
+    RPSave = DAG.getCopyFromReg(Chain, dl, IA64::r7, MVT::i64, InGlue);
+    Chain = RPSave.getValue(1);
+    InGlue = RPSave.getValue(2);
+  }
   Chain = DAG.getCopyToReg(Chain, dl, IA64::r1, GPSave, InGlue);
   InGlue = Chain.getValue(1);
   Chain = DAG.getCopyToReg(Chain, dl, IA64::r12, SPSave, InGlue);
