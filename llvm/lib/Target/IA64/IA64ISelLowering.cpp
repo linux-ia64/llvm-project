@@ -260,40 +260,42 @@ SDValue IA64TargetLowering::LowerFormalArguments(
 
       InVals.push_back(ArgValue);
     } else {
-      // The argument arrives on the stack, above the 16-byte scratch area.
+      // The argument arrives on the stack, above the 16-byte scratch area. In a
+      // variadic function the eight parameter-slot register homes (64 bytes)
+      // are reserved just below the stack arguments so va_arg can walk the
+      // whole variadic list contiguously (see the spill loop below), so the
+      // stack arguments start 64 bytes higher.
       assert(VA.isMemLoc() && "unexpected argument location");
       int FI = MF.getFrameInfo().CreateFixedObject(
-          8, 16 + VA.getLocMemOffset(), /*IsImmutable=*/true);
+          8, 16 + (isVarArg ? 64 : 0) + VA.getLocMemOffset(),
+          /*IsImmutable=*/true);
       SDValue FIN = DAG.getFrameIndex(FI, getPointerTy(DAG.getDataLayout()));
       InVals.push_back(
           DAG.getLoad(VA.getValVT(), dl, Chain, FIN, MachinePointerInfo()));
     }
   }
 
-  // Variadic functions: spill the incoming GP registers not consumed by the
-  // named arguments into a register save area, so va_start/va_arg can walk the
-  // variadic arguments as a contiguous in-memory image. Storing through r39
-  // marks it used, so frame lowering's 'alloc' reserves all eight incoming GP
-  // registers as locals -- the caller's out0-out7 (r32-r39) thus survive for us
-  // to read here, whether or not this particular call passed all eight.
-  // (Variadic arguments that overflow the eight GP registers onto the stack are
-  // not yet handled.)
+  // Variadic functions: spill the unnamed incoming GP registers to their
+  // parameter-slot memory homes so va_start/va_arg can walk the variadic
+  // arguments as a single contiguous in-memory image. Slot i homes at offset
+  // 16 + 8*i, i.e. the eight homes occupy [16, 80); the stack-passed varargs
+  // start at 16 + 64 = 80 (the +64 reservation above), directly above the last
+  // register home. A va_list is just an ascending pointer, so it walks out of
+  // the register homes straight into the stack arguments. (Storing through r39
+  // also marks it used, so frame lowering's 'alloc' keeps all eight incoming GP
+  // registers live as locals.)
   if (isVarArg) {
     static const MCPhysReg ArgGPRs[] = {IA64::r32, IA64::r33, IA64::r34,
                                         IA64::r35, IA64::r36, IA64::r37,
                                         IA64::r38, IA64::r39};
     unsigned FirstVar = CCInfo.getFirstUnallocated(ArgGPRs);
-    unsigned NumVar = 8 - FirstVar;
     MachineFrameInfo &MFI = MF.getFrameInfo();
-    // One 8-byte slot per saved register (at least one, so va_start always has
-    // a valid frame index to hand out).
-    int SaveFI = MFI.CreateStackObject((NumVar ? NumVar : 1) * 8, Align(8),
-                                       /*isSpillSlot=*/false);
-    MF.getInfo<IA64FunctionInfo>()->setVarArgsFrameIndex(SaveFI);
-
-    SDValue SaveBase = DAG.getFrameIndex(SaveFI, MVT::i64);
+    int VAFI = 0;
     SmallVector<SDValue, 8> Stores;
     for (unsigned i = FirstVar; i < 8; ++i) {
+      int FI = MFI.CreateFixedObject(8, 16 + 8 * i, /*IsImmutable=*/false);
+      if (i == FirstVar)
+        VAFI = FI; // va_start points at the first unnamed slot's home
       Register VReg = RegInfo.createVirtualRegister(&IA64::GRRegClass);
       RegInfo.addLiveIn(ArgGPRs[i], VReg);
       // Protect this incoming register from the ar.pfs save: the 'alloc' that
@@ -301,13 +303,15 @@ SDValue IA64TargetLowering::LowerFormalArguments(
       // (see ArgPhysRegs / PSEUDO_ALLOC below).
       ArgPhysRegs.push_back(ArgGPRs[i]);
       SDValue Val = DAG.getCopyFromReg(Chain, dl, VReg, MVT::i64);
-      unsigned Offset = (i - FirstVar) * 8;
-      SDValue Addr = DAG.getNode(ISD::ADD, dl, MVT::i64, SaveBase,
-                                 DAG.getConstant(Offset, dl, MVT::i64));
-      Stores.push_back(DAG.getStore(
-          Val.getValue(1), dl, Val, Addr,
-          MachinePointerInfo::getFixedStack(MF, SaveFI, Offset)));
+      SDValue Addr = DAG.getFrameIndex(FI, MVT::i64);
+      Stores.push_back(DAG.getStore(Val.getValue(1), dl, Val, Addr,
+                                    MachinePointerInfo::getFixedStack(MF, FI)));
     }
+    // All eight GP slots named: no register varargs, so va_start points at the
+    // start of the stack varargs (offset 16 + 64).
+    if (FirstVar == 8)
+      VAFI = MFI.CreateFixedObject(8, 16 + 64, /*IsImmutable=*/true);
+    MF.getInfo<IA64FunctionInfo>()->setVarArgsFrameIndex(VAFI);
     if (!Stores.empty())
       Chain = DAG.getNode(ISD::TokenFactor, dl, MVT::Other, Stores);
   }
@@ -353,8 +357,13 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   CCInfo.AnalyzeCallOperands(Outs, CC_IA64_Call);
 
   // A 16-byte scratch area sits at the bottom of the outgoing frame; keep the
-  // whole thing 16-byte aligned.
-  unsigned NumBytes = (CCInfo.getStackSize() + 16 + 15) & ~15u;
+  // whole thing 16-byte aligned. A variadic call also reserves the 64-byte
+  // parameter-slot register-home area below the stack arguments, into which the
+  // callee spills its unnamed register args to form a contiguous va_list image
+  // (see LowerFormalArguments); the stack arguments therefore start 64 bytes
+  // higher (handled at the store below).
+  unsigned NumBytes =
+      (CCInfo.getStackSize() + 16 + (isVarArg ? 64 : 0) + 15) & ~15u;
 
   // Record how many output registers this call needs; the prologue 'alloc'
   // sizes its output region from the max over all of the function's calls.
@@ -419,18 +428,18 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
       RegsToPass.push_back(std::make_pair(VA.getLocReg(), Arg));
     } else {
       // Arguments beyond out0-out7 are passed on the outgoing stack, just above
-      // the 16-byte scratch area -- the same layout LowerFormalArguments reads
+      // the 16-byte scratch area (plus, for a variadic call, the 64-byte
+      // register-home reservation) -- the same layout LowerFormalArguments reads
       // incoming stack arguments from. The store is sp-relative: with a reserved
       // call frame (no variable-sized objects) sp is constant here; otherwise
       // the call-frame pseudos adjust it around the call.
       assert(VA.isMemLoc() && "argument neither in register nor on the stack");
+      unsigned Off = 16 + (isVarArg ? 64 : 0) + VA.getLocMemOffset();
       SDValue StackPtr = DAG.getRegister(IA64::r12, MVT::i64);
-      SDValue Addr =
-          DAG.getNode(ISD::ADD, dl, MVT::i64, StackPtr,
-                      DAG.getIntPtrConstant(16 + VA.getLocMemOffset(), dl));
+      SDValue Addr = DAG.getNode(ISD::ADD, dl, MVT::i64, StackPtr,
+                                 DAG.getIntPtrConstant(Off, dl));
       MemOpChains.push_back(DAG.getStore(
-          Chain, dl, Arg, Addr,
-          MachinePointerInfo::getStack(MF, 16 + VA.getLocMemOffset())));
+          Chain, dl, Arg, Addr, MachinePointerInfo::getStack(MF, Off)));
     }
   }
 
