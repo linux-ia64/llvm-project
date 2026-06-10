@@ -602,7 +602,7 @@ let canFoldAsLoad = 1 in {
 }
 
 def POPCNT : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src),
-  "popcnt $dst = $src", []>, isI;
+  "popcnt $dst = $src", [(set GR:$dst, (ctpop GR:$src))]>, isI;
 
 // some FP stuff:
 // Double-precision (f64) arithmetic carries the .d completer (53-bit rounding);

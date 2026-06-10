@@ -223,7 +223,10 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
     setOperationAction(ISD::FCOPYSIGN, VT, Expand);
   }
 
-  // The legalizer expansion of ctlz/cttz in terms of ctpop is large; expand.
+  // IA-64 has a native population count (popcnt); select ctpop directly.
+  setOperationAction(ISD::CTPOP, MVT::i64, Legal);
+  // ctlz/cttz have no direct instruction; let the legalizer expand them (now
+  // cheaply, in terms of the legal ctpop above).
   setOperationAction(ISD::CTLZ, MVT::i64, Expand);
   setOperationAction(ISD::CTTZ, MVT::i64, Expand);
   setOperationAction(ISD::ROTL, MVT::i64, Expand);
