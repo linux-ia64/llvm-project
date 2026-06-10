@@ -45,6 +45,7 @@ struct IA64BundlingPass : public MachineFunctionPass {
 
   bool runOnMachineFunction(MachineFunction &F) override {
     TII = F.getSubtarget().getInstrInfo();
+    RSEWrite = false;
     bool Changed = false;
     for (MachineBasicBlock &MBB : F)
       Changed |= runOnMachineBasicBlock(MBB);
@@ -57,6 +58,14 @@ private:
   // Ugly carried state, but pending writes can cross basic blocks. Taken
   // branches end instruction groups, so only fallthrough code matters.
   std::set<unsigned> PendingRegWrites;
+
+  // Likewise carried across blocks: an alloc writes the RSE/CFM and must be
+  // separated from a later call by a stop. The alloc commonly lives in the entry
+  // block while the first call sits in a fall-through successor (e.g. alloc in
+  // the prologue, first call in the next block), so a per-block flag would lose
+  // the pending alloc at the block boundary and skip the required stop. Reset
+  // only at function entry and when a stop is emitted below.
+  bool RSEWrite = false;
 };
 char IA64BundlingPass::ID = 0;
 } // end anonymous namespace
@@ -67,8 +76,6 @@ FunctionPass *llvm::createIA64BundlingPass() { return new IA64BundlingPass(); }
 
 bool IA64BundlingPass::runOnMachineBasicBlock(MachineBasicBlock &MBB) {
   bool Changed = false;
-
-  bool RSEWrite = false;
 
   for (MachineBasicBlock::iterator I = MBB.begin(); I != MBB.end();) {
     MachineInstr &MI = *I;
