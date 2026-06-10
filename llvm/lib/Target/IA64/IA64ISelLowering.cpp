@@ -150,6 +150,11 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
                       ISD::SDIVREM})
     setOperationAction(Op, MVT::i64, Expand);
 
+  // No single instruction yields both halves of a 64x64 product; expand into a
+  // separate low MUL and a high MULHU/MULHS (both of which we select).
+  setOperationAction(ISD::UMUL_LOHI, MVT::i64, Expand);
+  setOperationAction(ISD::SMUL_LOHI, MVT::i64, Expand);
+
   // va_start points the va_list at the register save area (custom); va_arg,
   // va_copy and va_end use the generic load/increment/store expansion. The
   // va_list is a plain pointer, so the default va_copy/va_end suffice.
