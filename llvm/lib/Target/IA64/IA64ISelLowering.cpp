@@ -60,6 +60,55 @@ static bool CC_IA64_Call_VarArgFP(unsigned ValNo, MVT ValVT, MVT LocVT,
   return true; // handled
 }
 
+// A named (prototyped) f80 'long double' argument is passed in one FP register
+// in register format, but -- being 16 bytes -- it occupies TWO parameter slots,
+// so it shadows two general registers (psABI 8.5.1). A variadic long double is
+// passed in the general registers in memory format (two slots); not yet
+// supported here. ShadowRegs is r32-r39 (incoming) or out0-out7 (outgoing).
+static bool CC_IA64_F80_Common(unsigned ValNo, MVT ValVT, MVT LocVT,
+                               ISD::ArgFlagsTy ArgFlags, CCState &State,
+                               ArrayRef<MCPhysReg> ShadowRegs) {
+  static const MCPhysReg FPRegs[] = {IA64::F8,  IA64::F9,  IA64::F10, IA64::F11,
+                                     IA64::F12, IA64::F13, IA64::F14, IA64::F15};
+  if (ArgFlags.isVarArg())
+    report_fatal_error("IA64: variadic long double (f80) passing is not yet "
+                       "implemented");
+  if (unsigned FReg = State.AllocateReg(FPRegs)) {
+    // Consume the two shadow GR parameter slots this 16-byte value occupies so
+    // following arguments keep their positional slots.
+    State.AllocateReg(ShadowRegs);
+    State.AllocateReg(ShadowRegs);
+    State.addLoc(
+        CCValAssign::getReg(ValNo, ValVT, FReg, LocVT, CCValAssign::Full));
+    return true;
+  }
+  // All FP argument registers used (reachable only via HFAs): pass the 16-byte
+  // value on the stack.
+  unsigned Off = State.AllocateStack(16, Align(16));
+  State.addLoc(CCValAssign::getMem(ValNo, ValVT, Off, LocVT, CCValAssign::Full));
+  return true;
+}
+
+// Incoming f80: shadow the incoming stacked GP registers r32-r39.
+static bool CC_IA64_F80(unsigned ValNo, MVT ValVT, MVT LocVT,
+                        CCValAssign::LocInfo /*LocInfo*/,
+                        ISD::ArgFlagsTy ArgFlags, CCState &State) {
+  static const MCPhysReg ShadowRegs[] = {IA64::r32, IA64::r33, IA64::r34,
+                                         IA64::r35, IA64::r36, IA64::r37,
+                                         IA64::r38, IA64::r39};
+  return CC_IA64_F80_Common(ValNo, ValVT, LocVT, ArgFlags, State, ShadowRegs);
+}
+
+// Outgoing f80: shadow the output registers out0-out7.
+static bool CC_IA64_Call_F80(unsigned ValNo, MVT ValVT, MVT LocVT,
+                             CCValAssign::LocInfo /*LocInfo*/,
+                             ISD::ArgFlagsTy ArgFlags, CCState &State) {
+  static const MCPhysReg ShadowRegs[] = {IA64::out0, IA64::out1, IA64::out2,
+                                         IA64::out3, IA64::out4, IA64::out5,
+                                         IA64::out6, IA64::out7};
+  return CC_IA64_F80_Common(ValNo, ValVT, LocVT, ArgFlags, State, ShadowRegs);
+}
+
 #define GET_CALLING_CONV_IMPL
 
 #include "IA64GenCallingConv.inc"
@@ -67,11 +116,13 @@ static bool CC_IA64_Call_VarArgFP(unsigned ValNo, MVT ValVT, MVT LocVT,
 IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
                                        const TargetSubtargetInfo &STI)
     : TargetLowering(TM, STI) {
-  // Register classes: general (i64), floating-point (f32/f64) and predicate
-  // (i1).
+  // Register classes: general (i64), floating-point (f32/f64/f80 = long double)
+  // and predicate (i1). f80 is the 80-bit double-extended C 'long double',
+  // held natively in the 82-bit FP registers (memory format via ldfe/stfe).
   addRegisterClass(MVT::i64, &IA64::GRRegClass);
   addRegisterClass(MVT::f32, &IA64::FPRegClass);
   addRegisterClass(MVT::f64, &IA64::FPRegClass);
+  addRegisterClass(MVT::f80, &IA64::FPRegClass);
   addRegisterClass(MVT::i1, &IA64::PRRegClass);
 
   // IA-64 uses SELECT, not SELECT_CC, and has no native BR_CC / jump tables.
@@ -92,6 +143,7 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::BR_CC, MVT::i64, Expand);
   setOperationAction(ISD::SELECT_CC, MVT::i64, Expand);
   setOperationAction(ISD::SELECT_CC, MVT::f64, Expand);
+  setOperationAction(ISD::SELECT_CC, MVT::f80, Expand);
 
   // FP compares: keep brcond(setcc f64) from folding into an unselectable
   // br_cc, so the legalizer hands us setcc + brcond. setcc f64 selects to the
@@ -101,6 +153,10 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::BR_CC, MVT::f64, Expand);
   setCondCodeAction(ISD::SETONE, MVT::f64, Expand);
   setCondCodeAction(ISD::SETUEQ, MVT::f64, Expand);
+  // f80 ('long double') compares select to the same fcmp relations.
+  setOperationAction(ISD::BR_CC, MVT::f80, Expand);
+  setCondCodeAction(ISD::SETONE, MVT::f80, Expand);
+  setCondCodeAction(ISD::SETUEQ, MVT::f80, Expand);
 
   // Comparing two predicates (i1): keep br_cc/select_cc as setcc + brcond/select,
   // and custom-lower the i1 setcc to predicate logic (eq/ne -> xnor/xor).
@@ -120,6 +176,10 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::FREM, MVT::f32, Expand);
   setOperationAction(ISD::FREM, MVT::f64, Expand);
   setOperationAction(ISD::FDIV, MVT::f64, Expand);
+  // f80 ('long double') has no inline divide/remainder; use the libcall
+  // (__divxf3 / fmodl). fadd/fsub/fmpy/fma are native (FADD etc.).
+  setOperationAction(ISD::FREM, MVT::f80, Expand);
+  setOperationAction(ISD::FDIV, MVT::f80, Expand);
 
   // f32 is a hardware type (held in the FP registers), but we model no separate
   // single-precision arithmetic path: promote f32 arithmetic to f64 and round
@@ -127,8 +187,8 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
   for (unsigned Op : {ISD::FADD, ISD::FSUB, ISD::FMUL, ISD::FDIV})
     setOperationAction(Op, MVT::f32, Promote);
 
-  // We don't support sin/cos/sqrt/pow.
-  for (MVT VT : {MVT::f32, MVT::f64}) {
+  // We don't support sin/cos/sqrt/pow (expand to libcalls: sinl/cosl/sqrtl/...).
+  for (MVT VT : {MVT::f32, MVT::f64, MVT::f80}) {
     setOperationAction(ISD::FSIN, VT, Expand);
     setOperationAction(ISD::FCOS, VT, Expand);
     setOperationAction(ISD::FSQRT, VT, Expand);
@@ -201,17 +261,19 @@ EVT IA64TargetLowering::getSetCCResultType(const DataLayout & /*DL*/,
 
 bool IA64TargetLowering::isFMAFasterThanFMulAndFAdd(const MachineFunction & /*MF*/,
                                                     EVT VT) const {
-  // fma/fms/fnma fuse a*b+c into one single-rounding F-unit op. Only f64: the
-  // FMA patterns are f64 and f32 FMA isn't promoted, so claiming it for f32
-  // would form an unselectable f32 fma node (f32 a*b+c stays fmul+fadd).
-  return VT == MVT::f64;
+  // fma/fms/fnma fuse a*b+c into one single-rounding F-unit op. f64 and f80
+  // have FMA patterns (FMAD / FMA); f32 FMA isn't promoted, so claiming it for
+  // f32 would form an unselectable f32 fma node (f32 a*b+c stays fmul+fadd).
+  return VT == MVT::f64 || VT == MVT::f80;
 }
 
 bool IA64TargetLowering::isFPImmLegal(const APFloat & /*Imm*/, EVT VT,
                                       bool /*ForCodeSize*/) const {
   // Keep f32/f64 constants out of the constant pool: we materialise them from
   // their integer bit pattern (movl + setf.d) -- see the fpimm patterns in
-  // IA64InstrInfo.td. (There is no constant-pool selection in this backend.)
+  // IA64InstrInfo.td. f80 ('long double') is 80 bits and cannot be built from a
+  // single 64-bit movl, so its literals go to the constant pool (loaded by ldfe;
+  // see the ISD::ConstantPool selection in IA64ISelDAGToDAG).
   return VT == MVT::f32 || VT == MVT::f64;
 }
 
@@ -242,7 +304,7 @@ SDValue IA64TargetLowering::LowerFormalArguments(
       const TargetRegisterClass *RC;
       if (RegVT == MVT::i64)
         RC = &IA64::GRRegClass;
-      else if (RegVT == MVT::f64)
+      else if (RegVT == MVT::f64 || RegVT == MVT::f80)
         RC = &IA64::FPRegClass;
       else
         report_fatal_error("IA64: unhandled formal-argument register type");
@@ -372,9 +434,18 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
 
   // Record how many output registers this call needs; the prologue 'alloc'
   // sizes its output region from the max over all of the function's calls.
-  // (FP arguments that shadow an out slot are out of scope; fib passes only
-  // integers, so this is just the argument count.)
-  unsigned NumOutRegs = std::min<unsigned>(Outs.size(), 8);
+  // Count the actually-allocated out registers rather than the argument count:
+  // an FP argument shadows (consumes) its parameter slot(s) without occupying an
+  // out register for the value, while a long double (f80) shadows *two* out
+  // slots -- so a trailing integer arg can land in a higher out register than
+  // the plain argument count would suggest.
+  static const MCPhysReg OutRegs[] = {IA64::out0, IA64::out1, IA64::out2,
+                                      IA64::out3, IA64::out4, IA64::out5,
+                                      IA64::out6, IA64::out7};
+  unsigned NumOutRegs = 0;
+  for (unsigned i = 0; i < 8; ++i)
+    if (CCInfo.isAllocated(OutRegs[i]))
+      NumOutRegs = i + 1;
   IA64FunctionInfo *FInfo = MF.getInfo<IA64FunctionInfo>();
   FInfo->OutRegsUsed = std::max(FInfo->OutRegsUsed, NumOutRegs);
 

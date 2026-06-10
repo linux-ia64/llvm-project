@@ -574,6 +574,11 @@ let mayStore = 1 in {
     "stfd [$dstPtr] = $value">, isM;
   def STF_SPILL : AForm<0x03, 0x0b, (outs), (ins GR:$dstPtr, FP:$value),
     "stf.spill [$dstPtr] = $value">, isM;
+  // Store the 80-bit double-extended (long double) memory format -- 10 bytes,
+  // the C 'long double' object format. Distinct from stf.spill (16-byte raw
+  // register format used for vreg spills).
+  def STFE : AForm<0x03, 0x0b, (outs), (ins GR:$dstPtr, FP:$value),
+    "stfe [$dstPtr] = $value">, isM;
 }
 
 let canFoldAsLoad = 1 in {
@@ -591,34 +596,40 @@ let canFoldAsLoad = 1 in {
     "ldfd $dst = [$srcPtr]">, isM;
   def LDF_FILL : AForm<0x03, 0x0b, (outs FP:$dst), (ins GR:$srcPtr),
     "ldf.fill $dst = [$srcPtr]">, isM;
+  // Load the 80-bit double-extended (long double) memory format; see STFE.
+  def LDFE : AForm<0x03, 0x0b, (outs FP:$dst), (ins GR:$srcPtr),
+    "ldfe $dst = [$srcPtr]">, isM;
 }
 
 def POPCNT : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src),
   "popcnt $dst = $src", []>, isI;
 
 // some FP stuff:
-def FADD : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2),
+// Double-precision (f64) arithmetic carries the .d completer (53-bit rounding);
+// the unsuffixed forms below are the extended (f80) ops, and the .s forms are
+// single (f32). Naming mirrors the completer: FADDD/.d, FADD/none, FADDS/.s.
+def FADDD : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2),
   "fadd.d $dst = $src1, $src2",
   [(set FP:$dst, (f64 (fadd FP:$src1, FP:$src2)))]>, isF;
 def FADDS: AForm<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2),
   "fadd.s $dst = $src1, $src2">, isF;
-def FSUB : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2),
+def FSUBD : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2),
   "fsub.d $dst = $src1, $src2",
   [(set FP:$dst, (f64 (fsub FP:$src1, FP:$src2)))]>, isF;
-def FMPY : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2),
+def FMPYD : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2),
   "fmpy.d $dst = $src1, $src2",
   [(set FP:$dst, (f64 (fmul FP:$src1, FP:$src2)))]>, isF;
 // Fused multiply-add forms. These match the ISD::FMA node (a single-rounding
 // a*b+c), which the DAG only forms when FP contraction is permitted -- so unlike
 // the pre-removal (fadd (fmul ...)) pattern they never silently fuse. fms is
 // a*b-c, fnma is c-a*b (= (-a)*b+c).
-def FMA : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$src3),
+def FMAD : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$src3),
   "fma.d $dst = $src1, $src2, $src3",
   [(set FP:$dst, (f64 (fma FP:$src1, FP:$src2, FP:$src3)))]>, isF;
-def FMS : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$src3),
+def FMSD : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$src3),
   "fms.d $dst = $src1, $src2, $src3",
   [(set FP:$dst, (f64 (fma FP:$src1, FP:$src2, (fneg FP:$src3))))]>, isF;
-def FNMA : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$src3),
+def FNMAD : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$src3),
   "fnma.d $dst = $src1, $src2, $src3",
   [(set FP:$dst, (f64 (fma (fneg FP:$src1), FP:$src2, FP:$src3)))]>, isF;
 def FABS : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src),
@@ -630,6 +641,36 @@ def FNEG : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src),
 def FNEGABS : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src),
   "fnegabs $dst = $src",
   [(set FP:$dst, (f64 (fneg (fabs FP:$src))))]>, isF;
+
+// Extended-precision (f80 / 'long double') arithmetic. With no precision
+// completer the F-unit rounds to the dynamic precision of status field sf0,
+// which the SysV ABI initialises to 80-bit double-extended -- exactly the C
+// long double. (FADDD etc. force .d / 53-bit; FADDS forces .s.) Memory format
+// is the 10-byte ldfe/stfe; the 82-bit register holds it exactly.
+def FADD : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2),
+  "fadd $dst = $src1, $src2",
+  [(set FP:$dst, (f80 (fadd FP:$src1, FP:$src2)))]>, isF;
+def FSUB : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2),
+  "fsub $dst = $src1, $src2",
+  [(set FP:$dst, (f80 (fsub FP:$src1, FP:$src2)))]>, isF;
+def FMPY : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2),
+  "fmpy $dst = $src1, $src2",
+  [(set FP:$dst, (f80 (fmul FP:$src1, FP:$src2)))]>, isF;
+def FMA : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$src3),
+  "fma $dst = $src1, $src2, $src3",
+  [(set FP:$dst, (f80 (fma FP:$src1, FP:$src2, FP:$src3)))]>, isF;
+def FMS : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$src3),
+  "fms $dst = $src1, $src2, $src3",
+  [(set FP:$dst, (f80 (fma FP:$src1, FP:$src2, (fneg FP:$src3))))]>, isF;
+def FNMA : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$src3),
+  "fnma $dst = $src1, $src2, $src3",
+  [(set FP:$dst, (f80 (fma (fneg FP:$src1), FP:$src2, FP:$src3)))]>, isF;
+// fabs/fneg/fnegabs are sign-bit only (precision-independent); reuse the f64
+// instructions for f80 operands.
+def : Pat<(f80 (fabs FP:$src)),          (FABS FP:$src)>;
+def : Pat<(f80 (fneg FP:$src)),          (FNEG FP:$src)>;
+def : Pat<(f80 (fneg (fabs FP:$src))),   (FNEGABS FP:$src)>;
+def : Pat<(f80 (select PR:$qp, FP:$t, FP:$f)), (CFMOV FP:$f, FP:$t, PR:$qp)>;
 
 let Constraints = "$bogussrc = $dst" in {
 def TCFMAS1 : AForm<0x03, 0x0b,
@@ -690,10 +731,45 @@ def FNORMD : AForm<0x03, 0x0b, (outs FP:$dst), (ins FP:$src),
   "fnorm.d $dst = $src">, isF;
 def FNORMS : AForm<0x03, 0x0b, (outs FP:$dst), (ins FP:$src),
   "fnorm.s $dst = $src">, isF;
+// fnorm with no precision completer rounds to the dynamic (sf0 = 80-bit
+// extended) precision: a no-op widening for f32/f64 -> f80.
+def FNORM : AForm<0x03, 0x0b, (outs FP:$dst), (ins FP:$src),
+  "fnorm $dst = $src">, isF;
 
-// f32 <-> f64 in registers
-def : Pat<(f64 (fpextend FP:$src)), (FNORMD FP:$src)>;
-def : Pat<(f32 (fpround FP:$src)),  (FNORMS FP:$src)>;
+// FP register<->register rounding/widening. The FNORM* instructions are
+// untyped (no DAG pattern of their own), and the FP register class now holds
+// three sizes (f32/f64/f80), so each source type must be named explicitly --
+// otherwise e.g. "fpround to f32" is ambiguous between an f64 and an f80 source.
+// fpextend to f64 (from f32) and fpround to f64 (from f80) each have a unique
+// source, so they need no annotation.
+def : Pat<(f64 (fpextend FP:$src)),         (FNORMD FP:$src)>;  // f32 -> f64
+def : Pat<(f64 (fpround  FP:$src)),         (FNORMD FP:$src)>;  // f80 -> f64
+def : Pat<(f32 (fpround (f64 FP:$src))),    (FNORMS FP:$src)>;
+def : Pat<(f32 (fpround (f80 FP:$src))),    (FNORMS FP:$src)>;
+// f{32,64} -> f80 widening (exact; fnorm = round to the dynamic sf0 precision).
+def : Pat<(f80 (fpextend (f32 FP:$src))),   (FNORM  FP:$src)>;
+def : Pat<(f80 (fpextend (f64 FP:$src))),   (FNORM  FP:$src)>;
+
+// f80 comparisons reuse the (precision-independent) FCMP* instructions; the
+// register compare looks at the full 82-bit value. Mirror the f64 SETCC rules.
+def : Pat<(setcc (f80 FP:$a), (f80 FP:$b), SETOEQ), (FCMPEQ FP:$a, FP:$b)>;
+def : Pat<(setcc (f80 FP:$a), (f80 FP:$b), SETOGT), (FCMPGT FP:$a, FP:$b)>;
+def : Pat<(setcc (f80 FP:$a), (f80 FP:$b), SETOGE), (FCMPGE FP:$a, FP:$b)>;
+def : Pat<(setcc (f80 FP:$a), (f80 FP:$b), SETOLT), (FCMPLT FP:$a, FP:$b)>;
+def : Pat<(setcc (f80 FP:$a), (f80 FP:$b), SETOLE), (FCMPLE FP:$a, FP:$b)>;
+def : Pat<(setcc (f80 FP:$a), (f80 FP:$b), SETUNE), (FCMPNE FP:$a, FP:$b)>;
+def : Pat<(setcc (f80 FP:$a), (f80 FP:$b), SETO),   (FCMPORD FP:$a, FP:$b)>;
+def : Pat<(setcc (f80 FP:$a), (f80 FP:$b), SETUO),  (FCMPUNORD FP:$a, FP:$b)>;
+def : Pat<(setcc (f80 FP:$a), (f80 FP:$b), SETUGE), (FCMPNLT FP:$a, FP:$b)>;
+def : Pat<(setcc (f80 FP:$a), (f80 FP:$b), SETUGT), (FCMPNLE FP:$a, FP:$b)>;
+def : Pat<(setcc (f80 FP:$a), (f80 FP:$b), SETULE), (FCMPNGT FP:$a, FP:$b)>;
+def : Pat<(setcc (f80 FP:$a), (f80 FP:$b), SETULT), (FCMPNGE FP:$a, FP:$b)>;
+def : Pat<(setcc (f80 FP:$a), (f80 FP:$b), SETEQ),  (FCMPEQ FP:$a, FP:$b)>;
+def : Pat<(setcc (f80 FP:$a), (f80 FP:$b), SETGT),  (FCMPGT FP:$a, FP:$b)>;
+def : Pat<(setcc (f80 FP:$a), (f80 FP:$b), SETGE),  (FCMPGE FP:$a, FP:$b)>;
+def : Pat<(setcc (f80 FP:$a), (f80 FP:$b), SETLT),  (FCMPLT FP:$a, FP:$b)>;
+def : Pat<(setcc (f80 FP:$a), (f80 FP:$b), SETLE),  (FCMPLE FP:$a, FP:$b)>;
+def : Pat<(setcc (f80 FP:$a), (f80 FP:$b), SETNE),  (FCMPNE FP:$a, FP:$b)>;
 
 // Integer <-> floating-point conversions. Both the int->fp and fp->int actions
 // are keyed by the *integer* type, so f32-result/operand forms are not promoted
@@ -707,6 +783,14 @@ def : Pat<(i64 (fp_to_sint (f64 FP:$src))), (GETFSIGD (FCVTFXTRUNC  FP:$src))>;
 def : Pat<(i64 (fp_to_uint (f64 FP:$src))), (GETFSIGD (FCVTFXUTRUNC FP:$src))>;
 def : Pat<(i64 (fp_to_sint (f32 FP:$src))), (GETFSIGD (FCVTFXTRUNC  (FNORMD FP:$src)))>;
 def : Pat<(i64 (fp_to_uint (f32 FP:$src))), (GETFSIGD (FCVTFXUTRUNC (FNORMD FP:$src)))>;
+
+// int <-> f80. fcvt.xf produces an exact 80-bit double-extended value from any
+// 64-bit integer (the format has a 64-bit significand), so -- unlike f64 -- no
+// rounding (fnorm) is needed on the int->fp side.
+def : Pat<(f80 (sint_to_fp GR:$src)), (FCVTXF  (SETFSIGD GR:$src))>;
+def : Pat<(f80 (uint_to_fp GR:$src)), (FCVTXUF (SETFSIGD GR:$src))>;
+def : Pat<(i64 (fp_to_sint (f80 FP:$src))), (GETFSIGD (FCVTFXTRUNC  FP:$src))>;
+def : Pat<(i64 (fp_to_uint (f80 FP:$src))), (GETFSIGD (FCVTFXUTRUNC FP:$src))>;
 
 def GETFD : AForm<0x03, 0x0b, (outs GR:$dst), (ins FP:$src),
   "getf.d $dst = $src">, isM;

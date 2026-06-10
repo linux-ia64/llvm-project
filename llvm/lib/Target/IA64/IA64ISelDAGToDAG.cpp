@@ -125,6 +125,28 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
     return;
   }
 
+  case ISD::ConstantPool: {
+    // Materialize a constant-pool entry's address the same way as a global or
+    // jump table: load it from its GOT slot (addl @ltoff(.LCPI), gp ;; ld8).
+    // The f80 ('long double') immediates that the legalizer spills here are then
+    // loaded with ldfe (the f80 load pattern). (f32/f64 immediates stay out of
+    // the pool -- see isFPImmLegal -- so this path is exercised only by f80.)
+    ConstantPoolSDNode *CP = cast<ConstantPoolSDNode>(N);
+    SDLoc dl(N);
+    SDValue CPA = CurDAG->getTargetConstantPool(
+        CP->getConstVal(), MVT::i64, CP->getAlign(), CP->getOffset(),
+        IA64::S_LTOFF);
+    SDValue Slot = SDValue(
+        CurDAG->getMachineNode(IA64::ADDL_GA, dl, MVT::i64,
+                               CurDAG->getRegister(IA64::r1, MVT::i64), CPA),
+        0);
+    SDNode *Ld = CurDAG->getMachineNode(IA64::LD8, dl, MVT::i64, MVT::Other,
+                                        Slot, CurDAG->getEntryNode());
+    ReplaceUses(SDValue(N, 0), SDValue(Ld, 0));
+    CurDAG->RemoveDeadNode(N);
+    return;
+  }
+
   case ISD::BR: {
     // br bb  ->  (p0) brl.cond bb.  The branch instructions carry an i64imm
     // target operand (not a tablegen 'bb' operand), so they are hand-selected
@@ -244,6 +266,7 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
     case MVT::i64: Opc = IA64::LD8;  break;
     case MVT::f32: Opc = IA64::LDF4; break;
     case MVT::f64: Opc = IA64::LDF8; break;
+    case MVT::f80: Opc = IA64::LDFE; break;
     default:
       report_fatal_error("IA64: cannot select a load of this type");
     }
@@ -306,6 +329,7 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
       case MVT::i64: Opc = IA64::ST8;  break;
       case MVT::f64: Opc = IA64::STF8; break;
       case MVT::f32: Opc = IA64::STF4; break;
+      case MVT::f80: Opc = IA64::STFE; break;
       default:
         report_fatal_error("IA64: cannot select a store of this type");
       }
@@ -315,6 +339,7 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
       case MVT::i16: Opc = IA64::ST2;  break;
       case MVT::i32: Opc = IA64::ST4;  break;
       case MVT::f32: Opc = IA64::STF4; break;
+      case MVT::f64: Opc = IA64::STF8; break;
       default:
         report_fatal_error("IA64: cannot select a truncating store of this type");
       }

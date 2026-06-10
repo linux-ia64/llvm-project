@@ -23,6 +23,9 @@ def CC_IA64 : CallingConv<[
   // f32 is passed as f64.
   CCIfType<[f32], CCPromoteToType<f64>>,
 
+  // long double (f80): one FP register, shadowing two GR parameter slots.
+  CCIfType<[f80], CCCustom<"CC_IA64_F80">>,
+
   // The first eight integer arguments arrive in the incoming stacked GP
   // registers r32-r39.
   CCIfType<[i64], CCAssignToReg<[r32, r33, r34, r35, r36, r37, r38, r39]>>,
@@ -49,6 +52,9 @@ def CC_IA64_Call : CallingConv<[
   CCIfType<[i1, i8, i16, i32], CCPromoteToType<i64>>,
   CCIfType<[f32], CCPromoteToType<f64>>,
 
+  // long double (f80): one FP register, shadowing two output parameter slots.
+  CCIfType<[f80], CCCustom<"CC_IA64_Call_F80">>,
+
   CCIfType<[i64],
            CCAssignToReg<[out0, out1, out2, out3, out4, out5, out6, out7]>>,
 
@@ -72,7 +78,8 @@ def RetCC_IA64 : CallingConv<[
   CCIfType<[i1, i8, i16, i32], CCPromoteToType<i64>>,
   CCIfType<[f32], CCPromoteToType<f64>>,
 
-  // Integers return in r8, floating-point in F8.
+  // Integers return in r8, floating-point (incl. long double) in F8.
   CCIfType<[i64], CCAssignToReg<[r8]>>,
-  CCIfType<[f64], CCAssignToReg<[F8]>>
+  CCIfType<[f64], CCAssignToReg<[F8]>>,
+  CCIfType<[f80], CCAssignToReg<[F8]>>
 ]>;

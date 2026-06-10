@@ -72,6 +72,9 @@ void IA64MCInstLower::Lower(const MachineInstr *MI, MCInst &OutMI) const {
     case MachineOperand::MO_JumpTableIndex:
       MCOp = lowerSymbolOperand(MO, Printer.GetJTISymbol(MO.getIndex()));
       break;
+    case MachineOperand::MO_ConstantPoolIndex:
+      MCOp = lowerSymbolOperand(MO, Printer.GetCPISymbol(MO.getIndex()));
+      break;
     case MachineOperand::MO_RegisterMask:
       // Call-clobber masks carry no printable operand.
       continue;

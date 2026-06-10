@@ -458,7 +458,7 @@ def BR : RegisterClass<"IA64", [i64], 64, (add B6)>;
 
 // these are the scratch (+stacked) FP registers
 
-def FP : RegisterClass<"IA64", [f64, f32], 128,
+def FP : RegisterClass<"IA64", [f64, f32, f80], 128,
        (add F6, F7,
         F8, F9, F10, F11, F12, F13, F14, F15,
         F32, F33, F34, F35, F36, F37, F38, F39,
