@@ -505,6 +505,36 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
     // the argument number diverge.
     SDValue Arg = OutVals[VA.getValNo()];
 
+    // By-value aggregate argument. The psABI passes aggregates by value; the
+    // frontend models this as a `byval` pointer to the caller's object and
+    // expects the callee to receive a pointer to a *private copy*. We currently
+    // realize that copy here (the callee then dereferences the pointer as usual)
+    // rather than flattening the aggregate into parameter slots/GRs -- that full
+    // ABI is still TODO (see struct-value-abi.md). The copy is mandatory: without
+    // it the argument aliases caller memory, and a callee that mutates or frees
+    // that memory corrupts the caller. Concretely, glibc regex's re_dfa_add_node
+    // takes an re_token_t by value and `realloc`s the very dfa->nodes array a
+    // by-value `dfa->nodes[org_idx]` argument points into -- so the un-copied
+    // pointer dangled into the freed block and read back garbage.
+    ISD::ArgFlagsTy Flags = Outs[VA.getValNo()].Flags;
+    if (Flags.isByVal()) {
+      unsigned Size = Flags.getByValSize();
+      if (Size != 0) {
+        Align ByValAlign = Flags.getNonZeroByValAlign();
+        int FI = MF.getFrameInfo().CreateStackObject(Size, ByValAlign, false);
+        SDValue Copy = DAG.getFrameIndex(FI, MVT::i64);
+        SDValue MemcpyChain = DAG.getMemcpy(
+            Chain, dl, Copy, Arg, DAG.getIntPtrConstant(Size, dl),
+            /*DstAlign=*/ByValAlign, /*SrcAlign=*/ByValAlign, /*isVol=*/false,
+            /*AlwaysInline=*/false, /*CI=*/nullptr,
+            /*OverrideTailCall=*/std::nullopt,
+            MachinePointerInfo::getFixedStack(MF, FI), MachinePointerInfo());
+        // Order the copy before the call (alongside the other arg stores).
+        MemOpChains.push_back(MemcpyChain);
+        Arg = Copy; // pass the private copy's address per VA below
+      }
+    }
+
     // Variadic long double (f80): the CC gave it two consecutive i64 slots --
     // this location and the next, both tagged with the same ValNo. It is passed
     // in memory format (psABI 8.5).
