@@ -61,21 +61,47 @@ static bool CC_IA64_Call_VarArgFP(unsigned ValNo, MVT ValVT, MVT LocVT,
 }
 
 // A named (prototyped) f80 'long double' argument is passed in one FP register
-// in register format, but -- being 16 bytes -- it occupies TWO parameter slots,
-// so it shadows two general registers (psABI 8.5.1). A variadic long double is
-// passed in the general registers in memory format (two slots); not yet
-// supported here. ShadowRegs is r32-r39 (incoming) or out0-out7 (outgoing).
+// in register format, but -- being 16 bytes -- it occupies TWO 16-byte-aligned
+// (Next-Even) parameter slots, so it shadows two general registers (psABI
+// 8.5.1). A variadic long double is passed in the general registers in memory
+// format (two slots). ShadowRegs is r32-r39 (incoming) or out0-out7 (outgoing).
 static bool CC_IA64_F80_Common(unsigned ValNo, MVT ValVT, MVT LocVT,
                                ISD::ArgFlagsTy ArgFlags, CCState &State,
                                ArrayRef<MCPhysReg> ShadowRegs) {
   static const MCPhysReg FPRegs[] = {IA64::F8,  IA64::F9,  IA64::F10, IA64::F11,
                                      IA64::F12, IA64::F13, IA64::F14, IA64::F15};
-  if (ArgFlags.isVarArg())
-    report_fatal_error("IA64: variadic long double (f80) passing is not yet "
-                       "implemented");
+  // A long double (double-extended) uses the "Next Even" slot policy (psABI
+  // 8.5.1, Table 8-3): it occupies two parameter slots and must START on an
+  // even-numbered slot. The slot index equals the shadow-GR index for the
+  // first eight slots, so if the next free shadow GR is odd, burn it as a
+  // padding slot (it is not reused for any later parameter). Beyond the eight
+  // register slots the same alignment is enforced on the stack via Align(16).
+  unsigned NextSlot = State.getFirstUnallocated(ShadowRegs);
+  if (NextSlot < ShadowRegs.size() && (NextSlot & 1))
+    State.AllocateReg(ShadowRegs);
+
+  if (ArgFlags.isVarArg()) {
+    // A variadic long double is passed in the *general* registers in memory
+    // format (psABI 8.5), occupying two parameter slots; spill into the stack
+    // image if the registers are exhausted. Emit two i64 part-locations (this
+    // value gets two CCValAssigns); LowerCall splits the f80 into the two
+    // memory-format halves via an stfe/ld8 temporary. The first stack part is
+    // 16-byte aligned to keep the Next-Even policy on the stack.
+    for (int Part = 0; Part < 2; ++Part) {
+      if (unsigned Reg = State.AllocateReg(ShadowRegs))
+        State.addLoc(CCValAssign::getReg(ValNo, MVT::i64, Reg, MVT::i64,
+                                         CCValAssign::Full));
+      else
+        State.addLoc(CCValAssign::getMem(
+            ValNo, MVT::i64,
+            State.AllocateStack(8, Align(Part == 0 ? 16 : 8)), MVT::i64,
+            CCValAssign::Full));
+    }
+    return true;
+  }
   if (unsigned FReg = State.AllocateReg(FPRegs)) {
-    // Consume the two shadow GR parameter slots this 16-byte value occupies so
-    // following arguments keep their positional slots.
+    // Consume the two (now even-aligned) shadow GR parameter slots this 16-byte
+    // value occupies so following arguments keep their positional slots.
     State.AllocateReg(ShadowRegs);
     State.AllocateReg(ShadowRegs);
     State.addLoc(
@@ -474,7 +500,69 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   SmallVector<SDValue, 8> MemOpChains;
   for (unsigned i = 0, e = ArgLocs.size(); i != e; ++i) {
     CCValAssign &VA = ArgLocs[i];
-    SDValue Arg = OutVals[i];
+    // Index by ValNo, not i: a variadic long double maps one argument value to
+    // two consecutive parameter-slot locations (see below), after which i and
+    // the argument number diverge.
+    SDValue Arg = OutVals[VA.getValNo()];
+
+    // Variadic long double (f80): the CC gave it two consecutive i64 slots --
+    // this location and the next, both tagged with the same ValNo. It is passed
+    // in memory format (psABI 8.5).
+    if (i + 1 < e && ArgLocs[i + 1].getValNo() == VA.getValNo()) {
+      CCValAssign &VAHi = ArgLocs[i + 1];
+
+      // Both halves land on the outgoing stack: store the long double straight
+      // to its parameter slot with stfe (memory format) -- no register
+      // round-trip. (The two slots are adjacent, so one 10-byte stfe covers the
+      // significant bytes; the callee's va_arg reads it back with ldfe.) The
+      // spill-and-reload path below would only DAGCombine down to this if the
+      // combiner forwarded an f80 store into i64 loads, which it does not.
+      if (VA.isMemLoc() && VAHi.isMemLoc()) {
+        unsigned Off = 16 + 64 + VA.getLocMemOffset(); // varargs => +64
+        SDValue Addr = DAG.getNode(ISD::ADD, dl, MVT::i64,
+                                   DAG.getRegister(IA64::r12, MVT::i64),
+                                   DAG.getIntPtrConstant(Off, dl));
+        MemOpChains.push_back(DAG.getStore(Chain, dl, Arg, Addr,
+                                           MachinePointerInfo::getStack(MF, Off)));
+        ++i; // consumed both part-locations
+        continue;
+      }
+
+      // At least one half goes in a general register: spill to a 16-byte
+      // temporary with stfe and reload the two 8-byte memory-format halves
+      // (ld8) into the assigned slots -- the in-memory image the callee's
+      // va_arg reconstructs with ldfe. (There is no register instruction to
+      // extract the 80-bit *memory* format into GRs, so the spill is required.)
+      int FI = MF.getFrameInfo().CreateStackObject(16, Align(16), false);
+      SDValue Tmp = DAG.getFrameIndex(FI, MVT::i64);
+      SDValue St = DAG.getStore(Chain, dl, Arg, Tmp,
+                                MachinePointerInfo::getFixedStack(MF, FI));
+      SDValue HiAddr = DAG.getNode(ISD::ADD, dl, MVT::i64, Tmp,
+                                   DAG.getIntPtrConstant(8, dl));
+      SDValue Half[2] = {
+          DAG.getLoad(MVT::i64, dl, St, Tmp,
+                      MachinePointerInfo::getFixedStack(MF, FI)),
+          DAG.getLoad(MVT::i64, dl, St, HiAddr,
+                      MachinePointerInfo::getFixedStack(MF, FI, 8))};
+      // Order the spill/reload before the call.
+      MemOpChains.push_back(Half[0].getValue(1));
+      MemOpChains.push_back(Half[1].getValue(1));
+      for (unsigned Part = 0; Part < 2; ++Part) {
+        CCValAssign &PVA = ArgLocs[i + Part];
+        if (PVA.isRegLoc()) {
+          RegsToPass.push_back(std::make_pair(PVA.getLocReg(), Half[Part]));
+        } else {
+          unsigned Off = 16 + 64 + PVA.getLocMemOffset(); // varargs => +64
+          SDValue Addr = DAG.getNode(ISD::ADD, dl, MVT::i64,
+                                     DAG.getRegister(IA64::r12, MVT::i64),
+                                     DAG.getIntPtrConstant(Off, dl));
+          MemOpChains.push_back(DAG.getStore(
+              Chain, dl, Half[Part], Addr, MachinePointerInfo::getStack(MF, Off)));
+        }
+      }
+      ++i; // consumed both part-locations
+      continue;
+    }
 
     switch (VA.getLocInfo()) {
     case CCValAssign::Full:

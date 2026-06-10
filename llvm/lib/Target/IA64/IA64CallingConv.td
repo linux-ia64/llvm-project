@@ -52,7 +52,9 @@ def CC_IA64_Call : CallingConv<[
   CCIfType<[i1, i8, i16, i32], CCPromoteToType<i64>>,
   CCIfType<[f32], CCPromoteToType<f64>>,
 
-  // long double (f80): one FP register, shadowing two output parameter slots.
+  // long double (f80): a fixed arg goes in one FP register, shadowing two
+  // output parameter slots; a variadic arg goes in two general registers
+  // (memory format). LowerCall splits the variadic case.
   CCIfType<[f80], CCCustom<"CC_IA64_Call_F80">>,
 
   CCIfType<[i64],
