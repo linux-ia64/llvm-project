@@ -409,9 +409,15 @@ SDValue IA64TargetLowering::LowerFormalArguments(
                                     MachinePointerInfo::getFixedStack(MF, FI)));
     }
     // All eight GP slots named: no register varargs, so va_start points at the
-    // start of the stack varargs (slot 8, at sp+16 = 8*8 - 48).
+    // first unnamed stack slot. That is slot 8 (sp+16) only when there are no
+    // *named* stack arguments; if the prototype has named parameters beyond the
+    // eight register slots (e.g. Links' input_field: 8 register params + 4 named
+    // stack args + ...), the unnamed args begin after them, at
+    // sp + 16 + <bytes of named stack args>. CCInfo.getStackSize() is exactly
+    // those bytes (the formals were just analyzed above).
     if (FirstVar == 8)
-      VAFI = MFI.CreateFixedObject(8, 16, /*IsImmutable=*/true);
+      VAFI = MFI.CreateFixedObject(8, 16 + CCInfo.getStackSize(),
+                                   /*IsImmutable=*/true);
     MF.getInfo<IA64FunctionInfo>()->setVarArgsFrameIndex(VAFI);
     if (!Stores.empty())
       Chain = DAG.getNode(ISD::TokenFactor, dl, MVT::Other, Stores);
