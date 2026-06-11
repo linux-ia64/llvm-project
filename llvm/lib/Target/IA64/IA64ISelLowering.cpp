@@ -165,9 +165,9 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
   // keeps brcond(setcc) intact, which is exactly what our setcc (CMP*) patterns
   // and the hand-selected BRCOND consume. (Sparc keys these by operand type
   // too; it only differs in Custom-lowering them, having native cc-branches.)
-  // FP (f64) compares/branches stay deferred -- no FCMP patterns yet.
   setOperationAction(ISD::BR_CC, MVT::i64, Expand);
   setOperationAction(ISD::SELECT_CC, MVT::i64, Expand);
+  setOperationAction(ISD::SELECT_CC, MVT::f32, Expand);
   setOperationAction(ISD::SELECT_CC, MVT::f64, Expand);
   setOperationAction(ISD::SELECT_CC, MVT::f80, Expand);
 
@@ -183,6 +183,11 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::BR_CC, MVT::f80, Expand);
   setCondCodeAction(ISD::SETONE, MVT::f80, Expand);
   setCondCodeAction(ISD::SETUEQ, MVT::f80, Expand);
+  // ...and so do f32 compares (fcmp looks at the full register-format value,
+  // so single precision needs no separate compare path).
+  setOperationAction(ISD::BR_CC, MVT::f32, Expand);
+  setCondCodeAction(ISD::SETONE, MVT::f32, Expand);
+  setCondCodeAction(ISD::SETUEQ, MVT::f32, Expand);
 
   // Comparing two predicates (i1): keep br_cc/select_cc as setcc + brcond/select,
   // and custom-lower the i1 setcc to predicate logic (eq/ne -> xnor/xor).
