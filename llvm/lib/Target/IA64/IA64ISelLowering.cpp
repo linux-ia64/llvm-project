@@ -356,15 +356,15 @@ SDValue IA64TargetLowering::LowerFormalArguments(
 
       InVals.push_back(ArgValue);
     } else {
-      // The argument arrives on the stack, above the 16-byte scratch area. In a
-      // variadic function the eight parameter-slot register homes (64 bytes)
-      // are reserved just below the stack arguments so va_arg can walk the
-      // whole variadic list contiguously (see the spill loop below), so the
-      // stack arguments start 64 bytes higher.
+      // The argument arrives on the stack. Per the psABI (§8.5.3) parameter
+      // slot 8 is at sp+16, slot 9 at sp+24, and so on (the 16-byte scratch
+      // area sits below at [sp, sp+16)). This holds whether or not the function
+      // is variadic -- the variadic register-home spill area is carved out of
+      // *this* frame and the scratch area, not reserved by the caller (see the
+      // spill loop below).
       assert(VA.isMemLoc() && "unexpected argument location");
       int FI = MF.getFrameInfo().CreateFixedObject(
-          8, 16 + (isVarArg ? 64 : 0) + VA.getLocMemOffset(),
-          /*IsImmutable=*/true);
+          8, 16 + VA.getLocMemOffset(), /*IsImmutable=*/true);
       SDValue FIN = DAG.getFrameIndex(FI, getPointerTy(DAG.getDataLayout()));
       InVals.push_back(
           DAG.getLoad(VA.getValVT(), dl, Chain, FIN, MachinePointerInfo()));
@@ -373,13 +373,18 @@ SDValue IA64TargetLowering::LowerFormalArguments(
 
   // Variadic functions: spill the unnamed incoming GP registers to their
   // parameter-slot memory homes so va_start/va_arg can walk the variadic
-  // arguments as a single contiguous in-memory image. Slot i homes at offset
-  // 16 + 8*i, i.e. the eight homes occupy [16, 80); the stack-passed varargs
-  // start at 16 + 64 = 80 (the +64 reservation above), directly above the last
-  // register home. A va_list is just an ascending pointer, so it walks out of
-  // the register homes straight into the stack arguments. (Storing through r39
-  // also marks it used, so frame lowering's 'alloc' keeps all eight incoming GP
-  // registers live as locals.)
+  // arguments as a single contiguous in-memory image. Per the psABI (§8.5.4)
+  // the callee spills in6/in7 into the 16-byte scratch area at [sp, sp+16) and
+  // in0-in5 into up to 48 bytes at the base of its own frame, just below sp.
+  // This places parameter slot i at offset 8*i - 48 from the incoming sp:
+  // slot6 -> sp+0, slot7 -> sp+8, slot8 (first stack arg) -> sp+16, slot9 ->
+  // sp+24, ... -- one contiguous ascending block running from the frame base up
+  // into the caller's memory arguments. A va_list is just an ascending pointer,
+  // so it walks out of the register homes straight into the stack arguments.
+  // (CreateFixedObject offsets are relative to the incoming sp; negative
+  // offsets land in this frame, which PrologEpilogInserter sizes to cover.
+  // Storing the registers also marks them used, so frame lowering's 'alloc'
+  // keeps all eight incoming GP registers live as locals.)
   if (isVarArg) {
     static const MCPhysReg ArgGPRs[] = {IA64::r32, IA64::r33, IA64::r34,
                                         IA64::r35, IA64::r36, IA64::r37,
@@ -389,7 +394,7 @@ SDValue IA64TargetLowering::LowerFormalArguments(
     int VAFI = 0;
     SmallVector<SDValue, 8> Stores;
     for (unsigned i = FirstVar; i < 8; ++i) {
-      int FI = MFI.CreateFixedObject(8, 16 + 8 * i, /*IsImmutable=*/false);
+      int FI = MFI.CreateFixedObject(8, 8 * (int)i - 48, /*IsImmutable=*/false);
       if (i == FirstVar)
         VAFI = FI; // va_start points at the first unnamed slot's home
       Register VReg = RegInfo.createVirtualRegister(&IA64::GRRegClass);
@@ -404,9 +409,9 @@ SDValue IA64TargetLowering::LowerFormalArguments(
                                     MachinePointerInfo::getFixedStack(MF, FI)));
     }
     // All eight GP slots named: no register varargs, so va_start points at the
-    // start of the stack varargs (offset 16 + 64).
+    // start of the stack varargs (slot 8, at sp+16 = 8*8 - 48).
     if (FirstVar == 8)
-      VAFI = MFI.CreateFixedObject(8, 16 + 64, /*IsImmutable=*/true);
+      VAFI = MFI.CreateFixedObject(8, 16, /*IsImmutable=*/true);
     MF.getInfo<IA64FunctionInfo>()->setVarArgsFrameIndex(VAFI);
     if (!Stores.empty())
       Chain = DAG.getNode(ISD::TokenFactor, dl, MVT::Other, Stores);
@@ -453,13 +458,11 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   CCInfo.AnalyzeCallOperands(Outs, CC_IA64_Call);
 
   // A 16-byte scratch area sits at the bottom of the outgoing frame; keep the
-  // whole thing 16-byte aligned. A variadic call also reserves the 64-byte
-  // parameter-slot register-home area below the stack arguments, into which the
-  // callee spills its unnamed register args to form a contiguous va_list image
-  // (see LowerFormalArguments); the stack arguments therefore start 64 bytes
-  // higher (handled at the store below).
-  unsigned NumBytes =
-      (CCInfo.getStackSize() + 16 + (isVarArg ? 64 : 0) + 15) & ~15u;
+  // whole thing 16-byte aligned. Stack-passed arguments begin at sp+16 (psABI
+  // §8.5.3), variadic or not: the variadic register-home spill area is built by
+  // the callee out of its own frame and the scratch area, not reserved here
+  // (see LowerFormalArguments).
+  unsigned NumBytes = (CCInfo.getStackSize() + 16 + 15) & ~15u;
 
   // Record how many output registers this call needs; the prologue 'alloc'
   // sizes its output region from the max over all of the function's calls.
@@ -551,7 +554,7 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
       // spill-and-reload path below would only DAGCombine down to this if the
       // combiner forwarded an f80 store into i64 loads, which it does not.
       if (VA.isMemLoc() && VAHi.isMemLoc()) {
-        unsigned Off = 16 + 64 + VA.getLocMemOffset(); // varargs => +64
+        unsigned Off = 16 + VA.getLocMemOffset(); // psABI: slot 8 at sp+16
         SDValue Addr = DAG.getNode(ISD::ADD, dl, MVT::i64,
                                    DAG.getRegister(IA64::r12, MVT::i64),
                                    DAG.getIntPtrConstant(Off, dl));
@@ -585,7 +588,7 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
         if (PVA.isRegLoc()) {
           RegsToPass.push_back(std::make_pair(PVA.getLocReg(), Half[Part]));
         } else {
-          unsigned Off = 16 + 64 + PVA.getLocMemOffset(); // varargs => +64
+          unsigned Off = 16 + PVA.getLocMemOffset(); // psABI: slot 8 at sp+16
           SDValue Addr = DAG.getNode(ISD::ADD, dl, MVT::i64,
                                      DAG.getRegister(IA64::r12, MVT::i64),
                                      DAG.getIntPtrConstant(Off, dl));
@@ -625,13 +628,13 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
       RegsToPass.push_back(std::make_pair(VA.getLocReg(), Arg));
     } else {
       // Arguments beyond out0-out7 are passed on the outgoing stack, just above
-      // the 16-byte scratch area (plus, for a variadic call, the 64-byte
-      // register-home reservation) -- the same layout LowerFormalArguments reads
+      // the 16-byte scratch area: parameter slot 8 at sp+16, slot 9 at sp+24,
+      // ... (psABI §8.5.3) -- the same layout LowerFormalArguments reads
       // incoming stack arguments from. The store is sp-relative: with a reserved
       // call frame (no variable-sized objects) sp is constant here; otherwise
       // the call-frame pseudos adjust it around the call.
       assert(VA.isMemLoc() && "argument neither in register nor on the stack");
-      unsigned Off = 16 + (isVarArg ? 64 : 0) + VA.getLocMemOffset();
+      unsigned Off = 16 + VA.getLocMemOffset();
       SDValue StackPtr = DAG.getRegister(IA64::r12, MVT::i64);
       SDValue Addr = DAG.getNode(ISD::ADD, dl, MVT::i64, StackPtr,
                                  DAG.getIntPtrConstant(Off, dl));
