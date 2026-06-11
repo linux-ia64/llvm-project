@@ -30,8 +30,15 @@ using namespace clang::CodeGen;
 //    allocated buffer whose address is passed in r8 (sret); the backend's
 //    CCIfSRet rule routes it there.
 //
-// TODO: 16-byte-aligned aggregates should use the "Next Even" slot policy (skip
-// an odd slot); the [N x i64] coercion does not yet convey that to the backend.
+// A 16-byte-aligned aggregate uses the "Next Even" slot policy (psABI Table
+// 8-1): it must start on an even parameter slot. The [N x i64] coercion cannot
+// convey the alignment to the backend, but the slot an argument lands on is
+// fully determined by the arguments before it (slots 0-7 are the registers,
+// 8+ the stack), so classifyArgumentType tracks the running slot count and,
+// when such an aggregate would start on an odd slot, emits one i64 of padding
+// (an unused argument, ABIArgInfo's PaddingType) to burn it. Scalar long
+// doubles and HFAs need no padding -- the backend's f80 CC hook applies Next
+// Even itself -- but their slot consumption is mirrored in the count.
 //===----------------------------------------------------------------------===//
 
 namespace {
@@ -44,7 +51,10 @@ private:
   static constexpr uint64_t MaxReturnRegBits = 256;
 
   ABIArgInfo classifyReturnType(QualType RetTy) const;
-  ABIArgInfo classifyArgumentType(QualType Ty) const;
+  /// Classify one argument. \p Slots is the running count of parameter slots
+  /// taken by the preceding arguments; it is advanced by this argument's
+  /// footprint (including any Next-Even padding slot).
+  ABIArgInfo classifyArgumentType(QualType Ty, uint64_t &Slots) const;
 
   /// Coerce an aggregate to the [N x i64] (or plain i64) "direct" type that the
   /// backend splits across the integer parameter / return registers.
@@ -59,8 +69,11 @@ private:
   void computeInfo(CGFunctionInfo &FI) const override {
     if (!getCXXABI().classifyReturnType(FI))
       FI.getReturnInfo() = classifyReturnType(FI.getReturnType());
+    // An indirect (sret) return's buffer address travels in r8 and takes no
+    // parameter slot, so the slot count starts at 0 either way.
+    uint64_t Slots = 0;
     for (auto &Arg : FI.arguments())
-      Arg.info = classifyArgumentType(Arg.type);
+      Arg.info = classifyArgumentType(Arg.type, Slots);
   }
 
   RValue EmitVAArg(CodeGenFunction &CGF, Address VAListAddr, QualType Ty,
@@ -111,13 +124,21 @@ ABIArgInfo IA64ABIInfo::coerceHFA(const Type *Base, uint64_t Members) const {
   return ABIArgInfo::getDirect(CoerceTy);
 }
 
-ABIArgInfo IA64ABIInfo::classifyArgumentType(QualType Ty) const {
+ABIArgInfo IA64ABIInfo::classifyArgumentType(QualType Ty,
+                                             uint64_t &Slots) const {
   Ty = useFirstFieldIfTransparentUnion(Ty);
 
   if (!isAggregateTypeForABI(Ty)) {
     // Treat an enum as its underlying integer type.
     if (const EnumType *ET = Ty->getAs<EnumType>())
       Ty = ET->getDecl()->getIntegerType();
+
+    // A long double takes two slots starting on an even one (the backend's f80
+    // hook burns the odd slot itself); every other scalar takes one slot.
+    if (getContext().getTypeAlign(Ty) >= 128)
+      Slots += (Slots & 1) + 2;
+    else
+      ++Slots;
 
     if (isPromotableIntegerTypeForABI(Ty))
       return ABIArgInfo::getExtend(Ty);
@@ -129,14 +150,29 @@ ABIArgInfo IA64ABIInfo::classifyArgumentType(QualType Ty) const {
   if (Size == 0)
     return ABIArgInfo::getIgnore();
 
-  // Homogeneous FP aggregate -> f8-f15.
+  // Homogeneous FP aggregate -> f8-f15. Each element shadows one GR parameter
+  // slot (two for long double, where the backend's f80 hook also applies Next
+  // Even); mirror that consumption in the slot count.
   const Type *Base = nullptr;
   uint64_t Members = 0;
-  if (isHomogeneousAggregate(Ty, Base, Members))
+  if (isHomogeneousAggregate(Ty, Base, Members)) {
+    if (getContext().getTypeAlign(Ty) >= 128)
+      Slots += (Slots & 1) + 2 * Members;
+    else
+      Slots += Members;
     return coerceHFA(Base, Members);
+  }
 
-  // Everything else: flatten into 64-bit integer slots.
-  return ABIArgInfo::getDirect(coerceToIntSlots(Size));
+  // Everything else: flatten into 64-bit integer slots. A 16-byte-aligned
+  // aggregate must start on an even slot ("Next Even"); if it would start on
+  // an odd one, burn that slot with one i64 of padding (an unused argument).
+  llvm::Type *Padding = nullptr;
+  if (getContext().getTypeAlign(Ty) >= 128 && (Slots & 1)) {
+    Padding = llvm::Type::getInt64Ty(getVMContext());
+    ++Slots;
+  }
+  Slots += (Size + 63) / 64;
+  return ABIArgInfo::getDirect(coerceToIntSlots(Size), 0, Padding);
 }
 
 ABIArgInfo IA64ABIInfo::classifyReturnType(QualType RetTy) const {
@@ -175,12 +211,16 @@ RValue IA64ABIInfo::EmitVAArg(CodeGenFunction &CGF, Address VAListAddr,
                               QualType Ty, AggValueSlot Slot) const {
   // The va_list is a single pointer walking a contiguous image of 64-bit slots
   // (see the backend's va_start lowering). Each argument occupies a whole
-  // number of 8-byte slots in that image; aggregates are read in place.
-  ABIArgInfo AI = classifyArgumentType(Ty);
+  // number of 8-byte slots in that image; aggregates are read in place. The
+  // image starts on a 16-byte boundary (entry sp - 48), so a 16-byte-aligned
+  // value's Next-Even slot is exactly the next 16-byte-aligned address:
+  // AllowHigherAlign rounds the pointer up to it.
+  uint64_t Slots = 0;
+  ABIArgInfo AI = classifyArgumentType(Ty, Slots);
   return emitVoidPtrVAArg(CGF, VAListAddr, Ty, /*IsIndirect=*/AI.isIndirect(),
                           getContext().getTypeInfoInChars(Ty),
                           CharUnits::fromQuantity(8),
-                          /*AllowHigherAlign=*/false, Slot);
+                          /*AllowHigherAlign=*/true, Slot);
 }
 
 std::unique_ptr<TargetCodeGenInfo>
