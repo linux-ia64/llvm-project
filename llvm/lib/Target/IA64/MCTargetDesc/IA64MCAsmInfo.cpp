@@ -44,6 +44,15 @@ IA64MCAsmInfo::IA64MCAsmInfo(const Triple &TheTriple,
 
   CommentString = "//";
 
+  // GNU 'as' for IA-64 treats a bare identifier that matches a register alias
+  // (`gp`=r1, `sp`=r12, `tp`=r13, `rp`=b0, `r1`, ...) as that register even in
+  // symbol position, so e.g. a C global named `tp` in `@ltoff(tp)` or a pointer
+  // table entry `data8.ua tp` resolves to a register instead of the symbol
+  // (a silent miscompile in the data case). Decorate every non-temporary symbol
+  // with a trailing '#', which `as` strips -- the form gcc and the pre-removal
+  // backend both emit.
+  UseSymbolHashSuffix = true;
+
   // GNU 'as' for IA-64 spells the data directives "dataN"; the ".ua" suffix
   // requests unaligned storage (carried over from IA64TargetAsmInfo).
   Data8bitsDirective = "\tdata1\t";
