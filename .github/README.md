@@ -159,14 +159,6 @@ suite). `-O0` and `-O2` reach the same point. Verified features:
 **ABI / codegen gaps**
 - **Thread-local storage (TLS)** — no `@tprel`/`@dtprel`/`__tls_get_addr`
   lowering; `ISD::GlobalTLSAddress` is unhandled
-- Aggregate (struct/union) **by-value** argument and return — struct *layout* is
-  correct, and a `byval` argument is now passed as a pointer to a **caller-made
-  private copy** (`LowerCall` honors `Flags.isByVal()`), but it is *not* yet
-  flattened into 64-bit parameter slots / output GRs per psABI Table 8-1
-  (Next-Aligned, Byte 0, HFA → `f8–f15`). Self-consistent within clang-built
-  code (Lua, and now nano's regex, work), but still non-conforming at any
-  clang↔gcc boundary, and return-by-value is unimplemented. Details and the
-  remaining flattening work in `struct-value-abi.md`
 - **Tail-call optimisation** — calls are correct but never tail-called
   (`IsTailCall = false`)
 - **Inline assembly** operand constraints (no `getRegForInlineAsmConstraint`)
