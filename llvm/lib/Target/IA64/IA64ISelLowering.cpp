@@ -33,31 +33,75 @@
 
 using namespace llvm;
 
-// Variadic floating-point arguments are passed in the *general* registers, not
-// F8-F15: a prototyped variadic callee (e.g. printf) reads its variable
-// arguments out of the integer parameter slots / register save area, never the
-// FP registers (IA-64 SysV psABI 8.5.4). So an FP value matching the '...' is
-// bit-cast to its i64 IEEE representation (getf.d, the BCvt below) and assigned
-// to the next out register by *slot* via AllocateReg -- which also sidesteps the
-// fixed-arg FP-index shadow mapping. Fixed FP args fall through (return true) to
-// the normal F8-F15+shadow rule. Hooked from CC_IA64_Call (CCCustom).
-static bool CC_IA64_Call_VarArgFP(unsigned ValNo, MVT ValVT, MVT LocVT,
-                                  CCValAssign::LocInfo LocInfo,
-                                  ISD::ArgFlagsTy ArgFlags, CCState &State) {
-  // The CCCustom wrapper stops at this rule when we return true ("handled") and
-  // falls through to the next rule when we return false.
-  if (!ArgFlags.isVarArg())
-    return false; // a fixed FP arg: let the F8-F15 + GR-shadow rule handle it
-  static const MCPhysReg OutRegs[] = {IA64::out0, IA64::out1, IA64::out2,
-                                      IA64::out3, IA64::out4, IA64::out5,
-                                      IA64::out6, IA64::out7};
-  if (unsigned Reg = State.AllocateReg(OutRegs))
+// A floating-point scalar that is not long double (f64; f32 was promoted to
+// f64 earlier) occupies exactly one parameter slot. IA-64's parameter model is
+// positional: every argument, integer or FP, consumes a slot in one shared
+// sequence -- the first eight slots map to r32-r39 (incoming) / out0-out7
+// (outgoing), the rest to 8-byte stack slots. A *fixed* FP value travels in the
+// next floating-point register F8-F15, but it must still RESERVE its general
+// parameter slot so a following integer argument keeps its positional slot.
+//
+// CCAssignToRegWithShadow cannot express this: it shadows the GR at the *FP
+// register's* index, so the first FP arg always shadows r32 no matter how many
+// integers preceded it, never reserving the slot the FP arg actually occupies.
+// A trailing integer then reused that slot's register -- e.g. the long long in
+// _testfunc_q_bhilfdq(b,h,i,l,f,d,q) landed in the float's slot and read back
+// the float's bit pattern instead of q.
+//
+// A *variadic* FP arg ('...' match) is passed in a general register in memory
+// format: a prototyped variadic callee reads its variable arguments out of the
+// integer parameter slots / register save area, never F8-F15 (psABI 8.5.4). It
+// is bit-cast to its i64 IEEE pattern (getf.d, the BCvt in LowerCall) and put
+// in the next slot register. SlotRegs is r32-r39 (incoming) / out0-out7 (call).
+static bool CC_IA64_FP_Common(unsigned ValNo, MVT ValVT, MVT LocVT,
+                              ISD::ArgFlagsTy ArgFlags, CCState &State,
+                              ArrayRef<MCPhysReg> SlotRegs) {
+  static const MCPhysReg FPRegs[] = {IA64::F8,  IA64::F9,  IA64::F10, IA64::F11,
+                                     IA64::F12, IA64::F13, IA64::F14, IA64::F15};
+  if (ArgFlags.isVarArg()) {
+    if (unsigned Reg = State.AllocateReg(SlotRegs))
+      State.addLoc(
+          CCValAssign::getReg(ValNo, ValVT, Reg, MVT::i64, CCValAssign::BCvt));
+    else
+      State.addLoc(CCValAssign::getMem(ValNo, ValVT,
+                                       State.AllocateStack(8, Align(8)),
+                                       MVT::i64, CCValAssign::BCvt));
+    return true;
+  }
+  // Fixed FP arg: reserve the positional GR slot; within the first eight slots
+  // the value rides in the parallel FP register. Slots and FP registers are
+  // consumed only by FP args here (and the f80 hook), so the FP register is
+  // always available when a slot was, and they run out together; once the eight
+  // slots are gone the value goes on the stack.
+  if (State.AllocateReg(SlotRegs)) {
+    unsigned FReg = State.AllocateReg(FPRegs);
     State.addLoc(
-        CCValAssign::getReg(ValNo, ValVT, Reg, MVT::i64, CCValAssign::BCvt));
-  else
-    State.addLoc(CCValAssign::getMem(ValNo, ValVT, State.AllocateStack(8, Align(8)),
-                                     MVT::i64, CCValAssign::BCvt));
-  return true; // handled
+        CCValAssign::getReg(ValNo, ValVT, FReg, LocVT, CCValAssign::Full));
+    return true;
+  }
+  State.addLoc(CCValAssign::getMem(
+      ValNo, ValVT, State.AllocateStack(8, Align(8)), LocVT, CCValAssign::Full));
+  return true;
+}
+
+// Incoming f64/f32: the parameter slots are the incoming stacked GP registers.
+static bool CC_IA64_FP(unsigned ValNo, MVT ValVT, MVT LocVT,
+                       CCValAssign::LocInfo /*LocInfo*/,
+                       ISD::ArgFlagsTy ArgFlags, CCState &State) {
+  static const MCPhysReg SlotRegs[] = {IA64::r32, IA64::r33, IA64::r34,
+                                       IA64::r35, IA64::r36, IA64::r37,
+                                       IA64::r38, IA64::r39};
+  return CC_IA64_FP_Common(ValNo, ValVT, LocVT, ArgFlags, State, SlotRegs);
+}
+
+// Outgoing f64/f32: the parameter slots are the output registers out0-out7.
+static bool CC_IA64_Call_FP(unsigned ValNo, MVT ValVT, MVT LocVT,
+                            CCValAssign::LocInfo /*LocInfo*/,
+                            ISD::ArgFlagsTy ArgFlags, CCState &State) {
+  static const MCPhysReg SlotRegs[] = {IA64::out0, IA64::out1, IA64::out2,
+                                       IA64::out3, IA64::out4, IA64::out5,
+                                       IA64::out6, IA64::out7};
+  return CC_IA64_FP_Common(ValNo, ValVT, LocVT, ArgFlags, State, SlotRegs);
 }
 
 // A named (prototyped) f80 'long double' argument is passed in one FP register
@@ -616,7 +660,7 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
       break;
     case CCValAssign::BCvt:
       // A variadic FP arg routed into a GR slot: reinterpret the f64 as its
-      // i64 IEEE bit pattern (selects to getf.d). See CC_IA64_Call_VarArgFP.
+      // i64 IEEE bit pattern (selects to getf.d). See CC_IA64_FP_Common.
       Arg = DAG.getNode(ISD::BITCAST, dl, VA.getLocVT(), Arg);
       break;
     case CCValAssign::SExt:

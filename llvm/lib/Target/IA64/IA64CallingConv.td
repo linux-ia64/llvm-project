@@ -35,15 +35,15 @@ def CC_IA64 : CallingConv<[
   // registers r32-r39.
   CCIfType<[i64], CCAssignToReg<[r32, r33, r34, r35, r36, r37, r38, r39]>>,
 
-  // The first eight FP arguments arrive in F8-F15. Each one shadows (consumes)
-  // the parallel integer parameter slot, matching IA-64's positional parameter
-  // model.
-  CCIfType<[f64],
-           CCAssignToRegWithShadow<[F8, F9, F10, F11, F12, F13, F14, F15],
-                                   [r32, r33, r34, r35, r36, r37, r38, r39]>>,
+  // FP scalars (f64; f32 was promoted above): one positional parameter slot
+  // each. A fixed arg arrives in F8-F15 while *reserving* its GR slot so a
+  // following integer keeps its slot; a variadic arg arrives in the GR slot in
+  // memory format (psABI 8.5.4). CCAssignToRegWithShadow cannot express the
+  // "reserve the slot, not the FP-indexed GR" rule, so use a custom hook.
+  CCIfType<[f64], CCCustom<"CC_IA64_FP">>,
 
-  // Everything beyond the registers is passed in 8-byte stack slots.
-  CCIfType<[i64, f64], CCAssignToStack<8, 8>>
+  // Everything beyond the eight register slots is passed in 8-byte stack slots.
+  CCIfType<[i64], CCAssignToStack<8, 8>>
 ]>;
 
 //===----------------------------------------------------------------------===//
@@ -69,17 +69,14 @@ def CC_IA64_Call : CallingConv<[
   CCIfType<[i64],
            CCAssignToReg<[out0, out1, out2, out3, out4, out5, out6, out7]>>,
 
-  // A variadic FP arg ('...' match) is passed in a general register, not an FR
-  // (prototyped-variadic psABI 8.5.4). The hook handles only varargs and falls
-  // through for fixed FP args, which take the F8-F15 + GR-shadow rule below.
-  CCIfType<[f64], CCCustom<"CC_IA64_Call_VarArgFP">>,
+  // FP scalars (f64; f32 promoted above): one positional output slot each. A
+  // fixed arg goes in F8-F15 while reserving its output GR slot; a variadic arg
+  // ('...' match) goes in the output GR slot in memory format (prototyped-
+  // variadic psABI 8.5.4) -- LowerCall bit-casts it to its i64 pattern. The hook
+  // reserves the slot positionally, which CCAssignToRegWithShadow cannot do.
+  CCIfType<[f64], CCCustom<"CC_IA64_Call_FP">>,
 
-  CCIfType<[f64],
-           CCAssignToRegWithShadow<[F8, F9, F10, F11, F12, F13, F14, F15],
-                                   [out0, out1, out2, out3, out4, out5, out6,
-                                    out7]>>,
-
-  CCIfType<[i64, f64], CCAssignToStack<8, 8>>
+  CCIfType<[i64], CCAssignToStack<8, 8>>
 ]>;
 
 //===----------------------------------------------------------------------===//
