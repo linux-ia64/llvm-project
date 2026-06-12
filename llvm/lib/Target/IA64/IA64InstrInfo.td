@@ -663,15 +663,20 @@ def FMSD : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$sr
 def FNMAD : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$src3),
   "fnma.d $dst = $src1, $src2, $src3",
   [(set FP:$dst, (f64 (fma (fneg FP:$src1), FP:$src2, FP:$src3)))]>, isF;
+
+// Operations only affecting sign do not care about width, so there is just one
+// instruction for all of f32/f64/f80.
 def FABS : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src),
-  "fabs $dst = $src",
-  [(set FP:$dst, (f64 (fabs FP:$src)))]>, isF;
+  "fabs $dst = $src", []>, isF;
 def FNEG : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src),
-  "fneg $dst = $src",
-  [(set FP:$dst, (f64 (fneg FP:$src)))]>, isF;
+  "fneg $dst = $src", []>, isF;
 def FNEGABS : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src),
-  "fnegabs $dst = $src",
-  [(set FP:$dst, (f64 (fneg (fabs FP:$src))))]>, isF;
+  "fnegabs $dst = $src", []>, isF;
+foreach vt = [f32, f64, f80] in {
+  def : Pat<(vt (fabs vt:$src)), (FABS FP:$src)>;
+  def : Pat<(vt (fneg vt:$src)), (FNEG FP:$src)>;
+  def : Pat<(vt (fneg (fabs vt:$src))), (FNEGABS FP:$src)>;
+}
 
 // Extended-precision (f80 / 'long double') arithmetic. With no precision
 // completer the F-unit rounds to the dynamic precision of status field sf0,
@@ -696,12 +701,6 @@ def FMS : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$src
 def FNMA : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$src3),
   "fnma $dst = $src1, $src2, $src3",
   [(set FP:$dst, (f80 (fma (fneg FP:$src1), FP:$src2, FP:$src3)))]>, isF;
-// fabs/fneg/fnegabs are sign-bit only (precision-independent); reuse the f64
-// instructions for f80 operands.
-def : Pat<(f80 (fabs FP:$src)),          (FABS FP:$src)>;
-def : Pat<(f80 (fneg FP:$src)),          (FNEG FP:$src)>;
-def : Pat<(f80 (fneg (fabs FP:$src))),   (FNEGABS FP:$src)>;
-def : Pat<(f80 (select PR:$qp, FP:$t, FP:$f)), (CFMOV FP:$f, FP:$t, PR:$qp)>;
 
 let Constraints = "$bogussrc = $dst" in {
 def TCFMAS1 : AForm<0x03, 0x0b,
