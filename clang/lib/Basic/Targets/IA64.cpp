@@ -67,6 +67,13 @@ void IA64TargetInfo::getTargetDefines(const LangOptions &Opts,
   Builder.defineMacro("__REGISTER_PREFIX__", "");
   // __LP64__ / _LP64 are emitted generically for LP64 targets by the
   // preprocessor; long-double width follows from LongDoubleFormat above.
+
+  // GCC exposes __float80 as a builtin type on i386/x86_64/IA-64, where it
+  // "means the same thing as long double" -- on IA-64 long double is already
+  // the 80-bit double-extended format, so the two are bit- and ABI-identical
+  // (both mangle as 'e'). clang has no __float80 builtin type, so alias it to
+  // long double; this is what GCC code such as libffi's ia64 port expects.
+  Builder.defineMacro("__float80", "long double");
 }
 
 bool IA64TargetInfo::hasFeature(StringRef Feature) const {
