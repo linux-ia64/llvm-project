@@ -41,10 +41,20 @@ enum Specifier : uint16_t {
   // function symbol -- what a C function pointer must hold. Emitted for
   // function pointers stored in data (data8 @fptr(f)).
   S_FPTR,
-  // Marker flag (never stored in an MCSpecifierExpr): a function address loaded
-  // through the GOT needs the descriptor, so lowerSymbolOperand nests the two
-  // and prints @ltoff(@fptr(f)).
+  // Thread-local storage offsets. @tprel(sym) is the symbol's offset from the
+  // thread pointer (tp/r13), used directly in local-exec (movl @tprel). @dtprel
+  // and @dtpmod are the dynamic-model offset and module id, materialised through
+  // the GOT (see the S_LTOFF_* markers below) and consumed by __tls_get_addr.
+  S_TPREL,
+  S_DTPREL,
+  S_DTPMOD,
+  // Marker flags (never stored in an MCSpecifierExpr): a value loaded through
+  // the GOT, so lowerSymbolOperand nests the inner specifier inside @ltoff and
+  // prints @ltoff(@fptr(f)) / @ltoff(@tprel(x)) / @ltoff(@dtpmod(x)) / etc.
   S_LTOFF_FPTR,
+  S_LTOFF_TPREL,
+  S_LTOFF_DTPMOD,
+  S_LTOFF_DTPREL,
 };
 
 StringRef getSpecifierName(uint16_t S);

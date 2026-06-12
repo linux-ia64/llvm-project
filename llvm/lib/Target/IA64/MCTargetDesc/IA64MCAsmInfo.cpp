@@ -30,6 +30,12 @@ StringRef IA64::getSpecifierName(uint16_t S) {
     return "ltoff";
   case IA64::S_FPTR:
     return "fptr";
+  case IA64::S_TPREL:
+    return "tprel";
+  case IA64::S_DTPREL:
+    return "dtprel";
+  case IA64::S_DTPMOD:
+    return "dtpmod";
   }
   llvm_unreachable("Unhandled IA64 relocation specifier");
 }
