@@ -107,6 +107,34 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
     return;
   }
 
+  case IA64ISD::TLS_GOTLOAD: {
+    // Load a thread-local datum (a TLS offset or module id) from the symbol's
+    // GOT slot: addl rX = @ltoff(@<tls>(sym)), gp ;; ld8 rX = [rX]. Identical to
+    // the GlobalAddress case above, but the @ltoff specifier is already carried
+    // on the operand's target flags (set by LowerGlobalTLSAddress); the loaded
+    // value is consumed by 'add tp' (initial-exec) or __tls_get_addr (dynamic).
+    SDLoc dl(N);
+    SDValue GA = N->getOperand(0);
+    SDValue Slot = SDValue(
+        CurDAG->getMachineNode(IA64::ADDL_GA, dl, MVT::i64,
+                               CurDAG->getRegister(IA64::r1, MVT::i64), GA),
+        0);
+    SDNode *Ld = CurDAG->getMachineNode(IA64::LD8, dl, MVT::i64, MVT::Other,
+                                        Slot, CurDAG->getEntryNode());
+    ReplaceUses(SDValue(N, 0), SDValue(Ld, 0));
+    CurDAG->RemoveDeadNode(N);
+    return;
+  }
+
+  case IA64ISD::TLS_TPREL: {
+    // Materialize the local-exec tp-relative offset directly: movl rX =
+    // @tprel(sym). The operand is a TargetGlobalAddress tagged S_TPREL; the
+    // result is added to tp (r13) by the caller.
+    SDLoc dl(N);
+    CurDAG->SelectNodeTo(N, IA64::MOVL_GA, MVT::i64, N->getOperand(0));
+    return;
+  }
+
   case ISD::JumpTable: {
     // Materialize a jump table's base address the same way as a global: load it
     // from its GOT slot (addl @ltoff(.LJTI), gp ;; ld8). BR_JT expands to this

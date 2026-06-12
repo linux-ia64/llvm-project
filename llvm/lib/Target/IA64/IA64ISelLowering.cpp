@@ -19,6 +19,7 @@
 #include "IA64ISelLowering.h"
 #include "IA64MachineFunctionInfo.h"
 #include "IA64RegisterInfo.h"
+#include "MCTargetDesc/IA64MCAsmInfo.h"
 #include "MCTargetDesc/IA64MCTargetDesc.h"
 #include "llvm/CodeGen/CallingConvLower.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
@@ -28,8 +29,10 @@
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Target/TargetMachine.h"
 
 using namespace llvm;
 
@@ -296,6 +299,10 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
   // va_start points the va_list at the register save area (custom); va_arg,
   // va_copy and va_end use the generic load/increment/store expansion. The
   // va_list is a plain pointer, so the default va_copy/va_end suffice.
+  // Thread-local addresses are lowered per TLS model (see LowerGlobalTLSAddress);
+  // there is no generic expansion, so it must be Custom.
+  setOperationAction(ISD::GlobalTLSAddress, MVT::i64, Custom);
+
   setOperationAction(ISD::VASTART, MVT::Other, Custom);
   setOperationAction(ISD::VAARG, MVT::Other, Expand);
   setOperationAction(ISD::VACOPY, MVT::Other, Expand);
@@ -327,6 +334,10 @@ const char *IA64TargetLowering::getTargetNodeName(unsigned Opcode) const {
     return "IA64ISD::BRCALL";
   case IA64ISD::RET_FLAG:
     return "IA64ISD::RET_FLAG";
+  case IA64ISD::TLS_TPREL:
+    return "IA64ISD::TLS_TPREL";
+  case IA64ISD::TLS_GOTLOAD:
+    return "IA64ISD::TLS_GOTLOAD";
   }
 }
 
@@ -832,6 +843,8 @@ SDValue IA64TargetLowering::LowerOperation(SDValue Op,
   switch (Op.getOpcode()) {
   default:
     report_fatal_error("IA64: unimplemented custom operation lowering");
+  case ISD::GlobalTLSAddress:
+    return LowerGlobalTLSAddress(Op, DAG);
   case ISD::SETCC: {
     // i1 (predicate) comparison: a != b is xor, a == b is its complement
     // (xor then invert via xor with 1). Booleans only ever use eq/ne.
@@ -859,6 +872,76 @@ SDValue IA64TargetLowering::LowerOperation(SDValue Op,
                         MachinePointerInfo(SV));
   }
   }
+}
+
+SDValue IA64TargetLowering::LowerGlobalTLSAddress(SDValue Op,
+                                                  SelectionDAG &DAG) const {
+  GlobalAddressSDNode *GA = cast<GlobalAddressSDNode>(Op);
+  const GlobalValue *GV = GA->getGlobal();
+  SDLoc dl(Op);
+  EVT PtrVT = getPointerTy(DAG.getDataLayout());
+
+  // -femulated-tls is handled generically; otherwise emit native ELF TLS.
+  if (DAG.getTarget().useEmulatedTLS())
+    return LowerToTLSEmulatedModel(GA, DAG);
+
+  // Read the thread pointer (tp / r13). It is reserved, so a CopyFromReg of the
+  // physreg observes its live value; the per-model offset below is added to it.
+  auto ThreadPointer = [&]() {
+    return DAG.getCopyFromReg(DAG.getEntryNode(), dl, IA64::r13, PtrVT);
+  };
+
+  switch (getTargetMachine().getTLSModel(GV)) {
+  case TLSModel::LocalExec: {
+    // The offset is a static-link-time constant materialised directly (no GOT):
+    //   movl rX = @tprel(sym) ;; add rX = rX, tp
+    SDValue Sym =
+        DAG.getTargetGlobalAddress(GV, dl, PtrVT, /*offset=*/0, IA64::S_TPREL);
+    SDValue Off = DAG.getNode(IA64ISD::TLS_TPREL, dl, PtrVT, Sym);
+    return DAG.getNode(ISD::ADD, dl, PtrVT, ThreadPointer(), Off);
+  }
+  case TLSModel::InitialExec: {
+    // The offset is resolved by the dynamic linker into a GOT slot:
+    //   addl rX = @ltoff(@tprel(sym)), gp ;; ld8 rX = [rX] ;; add rX = rX, tp
+    SDValue Sym = DAG.getTargetGlobalAddress(GV, dl, PtrVT, /*offset=*/0,
+                                             IA64::S_LTOFF_TPREL);
+    SDValue Off = DAG.getNode(IA64ISD::TLS_GOTLOAD, dl, PtrVT, Sym);
+    return DAG.getNode(ISD::ADD, dl, PtrVT, ThreadPointer(), Off);
+  }
+  case TLSModel::GeneralDynamic:
+  case TLSModel::LocalDynamic: {
+    // Call __tls_get_addr(module, offset): the two arguments are loaded from the
+    // @ltoff(@dtpmod)/@ltoff(@dtprel) GOT slots, and the call returns the
+    // variable's address. (Local-dynamic is lowered identically to
+    // general-dynamic -- one call per access using the variable's own
+    // dtpmod/dtprel -- which is correct, just without the LDM module-base
+    // sharing optimization.) IA-64's __tls_get_addr takes the two scalars
+    // directly (out0/out1), not a pointer to a tls_index struct.
+    SDValue ModSym = DAG.getTargetGlobalAddress(GV, dl, PtrVT, /*offset=*/0,
+                                                IA64::S_LTOFF_DTPMOD);
+    SDValue OffSym = DAG.getTargetGlobalAddress(GV, dl, PtrVT, /*offset=*/0,
+                                                IA64::S_LTOFF_DTPREL);
+    SDValue Module = DAG.getNode(IA64ISD::TLS_GOTLOAD, dl, PtrVT, ModSym);
+    SDValue Offset = DAG.getNode(IA64ISD::TLS_GOTLOAD, dl, PtrVT, OffSym);
+
+    Type *I64Ty = Type::getInt64Ty(*DAG.getContext());
+    ArgListTy Args;
+    Args.push_back(ArgListEntry(Module, I64Ty));
+    Args.push_back(ArgListEntry(Offset, I64Ty));
+
+    // __tls_get_addr is an external symbol, so LowerCall emits a direct br.call
+    // and (via AdjustInstrPostInstrSelection) models the gp clobber -> the gp
+    // save/restore around the call survives, as GCC emits.
+    TargetLowering::CallLoweringInfo CLI(DAG);
+    CLI.setDebugLoc(dl)
+        .setChain(DAG.getEntryNode())
+        .setLibCallee(CallingConv::C, PointerType::getUnqual(*DAG.getContext()),
+                      DAG.getExternalSymbol("__tls_get_addr", PtrVT),
+                      std::move(Args));
+    return LowerCallTo(CLI).first;
+  }
+  }
+  llvm_unreachable("Unknown TLS model");
 }
 
 SDValue IA64TargetLowering::LowerReturn(

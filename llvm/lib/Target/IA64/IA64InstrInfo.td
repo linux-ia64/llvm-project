@@ -167,6 +167,14 @@ def : Pat<(i64 immSExt22:$imm), (ADDL r0, immSExt22:$imm)>;
 def ADDL_GA : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, globaladdress:$imm),
            "addl $dst = $imm, $src1", []>, isA;
 
+// movl of a relocated symbol: materializes a full 64-bit symbol-relative value
+// directly in the instruction (no GOT). Hand-selected (no DAG pattern) for the
+// local-exec TLS sequence -- 'movl rX = @tprel(sym)' (R_IA64_TPREL64I) -- which
+// must use a direct relocation since local-exec by definition skips the GOT;
+// the 64-bit form dodges the addl imm22/r0-r3 restriction for any tp offset.
+def MOVL_GA : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins globaladdress:$imm),
+           "movl $dst = $imm", []>, isLX;
+
 // hmm
 def ADDL_EA : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, calltarget:$imm),
            "addl $dst = $imm, $src1", []>, isA;

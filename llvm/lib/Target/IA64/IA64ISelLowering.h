@@ -35,7 +35,18 @@ enum NodeType : unsigned {
   BRCALL,
 
   /// RET_FLAG - Return with a flag operand.
-  RET_FLAG
+  RET_FLAG,
+
+  /// TLS_TPREL - local-exec thread-pointer-relative offset of a thread-local
+  /// symbol. Its single operand is a TargetGlobalAddress tagged S_TPREL;
+  /// selected to 'movl rX = @tprel(sym)'.
+  TLS_TPREL,
+
+  /// TLS_GOTLOAD - a value loaded from the symbol's GOT slot. Its single
+  /// operand is a TargetGlobalAddress whose target flags carry the @ltoff(...)
+  /// specifier (S_LTOFF_TPREL / S_LTOFF_DTPMOD / S_LTOFF_DTPREL); selected to
+  /// 'addl rX = <spec>, gp ;; ld8 rX = [rX]', the GlobalAddress GOT sequence.
+  TLS_GOTLOAD
 };
 } // end namespace IA64ISD
 
@@ -86,6 +97,12 @@ public:
                     SmallVectorImpl<SDValue> &InVals) const override;
 
   SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const override;
+
+  /// Lower a thread-local address access (ISD::GlobalTLSAddress) per the model
+  /// TargetMachine::getTLSModel picks: local-exec / initial-exec materialise a
+  /// tp-relative offset and add tp (r13); general/local-dynamic call
+  /// __tls_get_addr(module, offset).
+  SDValue LowerGlobalTLSAddress(SDValue Op, SelectionDAG &DAG) const;
 
   SDValue LowerReturn(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
                       const SmallVectorImpl<ISD::OutputArg> &Outs,
