@@ -157,8 +157,6 @@ suite). `-O0` and `-O2` reach the same point. Verified features:
 ## What Doesn't Work Yet
 
 **ABI / codegen gaps**
-- **Thread-local storage (TLS)** — no `@tprel`/`@dtprel`/`__tls_get_addr`
-  lowering; `ISD::GlobalTLSAddress` is unhandled
 - **Tail-call optimisation** — calls are correct but never tail-called
   (`IsTailCall = false`)
 - **Inline assembly** operand constraints (no `getRegForInlineAsmConstraint`)
