@@ -3520,7 +3520,7 @@ def WasmSystemLibrary
 // TODO: Should make every target explicit.
 def isDefaultLibcallArch : RuntimeLibcallAvailability<
   (any_of IsMIPS, IsLoongArch, IsVE, IsBPF, IsArchCSKY, IsArchArc, IsArchM68k,
-          IsArchXtensa, IsArchIA64, (all_of IsSystemZ, (not IsOSzOS)))>;
+          IsArchXtensa, (all_of IsSystemZ, (not IsOSzOS)))>;
 
 
 def isArch64Bit : RuntimeLibcallAvailability<(all_of IsArch64Bit)>;
@@ -3531,6 +3531,30 @@ def LegacyDefaultSystemLibrary
          exp10f, exp10, exp10l_f128,
          __powisf2, __powidf2, __powitf2_f128,
          LibcallImpls<(add Int128RTLibcalls), isArch64Bit>,
+         DefaultStackProtector, DefaultSafeStackGlobals
+)>;
+
+//===----------------------------------------------------------------------===//
+// IA-64 Runtime Libcalls
+//===----------------------------------------------------------------------===//
+
+def isIA64 : RuntimeLibcallAvailability<(all_of IsArchIA64)>;
+
+// The legacy default set, except that IA-64's 'long double' is 80-bit double
+// extended, so the F80 libcalls stripped from the default set are live here:
+// libgcc's ia64 lib1funcs provides __divxf3/__divdf3/__divsf3 (FP divide has
+// no instruction; add/sub/mul are native, so there is no __addxf3 etc., and
+// nothing expands to one) and libm provides the l-suffixed math functions
+// (fmodl, sinl, sqrtl, ...).
+def IA64SystemLibrary
+    : SystemRuntimeLibrary<isIA64,
+      (add DefaultRuntimeLibcallImpls,
+         DefaultRuntimeLibcallImpls_f80,
+         LibmHasSinCosF32, LibmHasSinCosF64, LibmHasSinCosF80,
+         LibmHasExp10F32, LibmHasExp10F64, LibmHasExp10F80,
+         LibmHasFrexpF80, LibmHasLdexpF80,
+         __powisf2, __powidf2, __powixf2,
+         Int128RTLibcalls,
          DefaultStackProtector, DefaultSafeStackGlobals
 )>;
 
