@@ -349,6 +349,28 @@ def : Pat<(setcc (f64 FP:$a), (f64 FP:$b), SETLT), (FCMPLT FP:$a, FP:$b)>;
 def : Pat<(setcc (f64 FP:$a), (f64 FP:$b), SETLE), (FCMPLE FP:$a, FP:$b)>;
 def : Pat<(setcc (f64 FP:$a), (f64 FP:$b), SETNE), (FCMPNE FP:$a, FP:$b)>;
 
+// f32 comparisons reuse the same (precision-independent) FCMP* instructions:
+// the register compare looks at the full 82-bit register-format value, so a
+// single-precision operand needs no separate compare. Mirror the f64 rules.
+def : Pat<(setcc (f32 FP:$a), (f32 FP:$b), SETOEQ), (FCMPEQ FP:$a, FP:$b)>;
+def : Pat<(setcc (f32 FP:$a), (f32 FP:$b), SETOGT), (FCMPGT FP:$a, FP:$b)>;
+def : Pat<(setcc (f32 FP:$a), (f32 FP:$b), SETOGE), (FCMPGE FP:$a, FP:$b)>;
+def : Pat<(setcc (f32 FP:$a), (f32 FP:$b), SETOLT), (FCMPLT FP:$a, FP:$b)>;
+def : Pat<(setcc (f32 FP:$a), (f32 FP:$b), SETOLE), (FCMPLE FP:$a, FP:$b)>;
+def : Pat<(setcc (f32 FP:$a), (f32 FP:$b), SETUNE), (FCMPNE FP:$a, FP:$b)>;
+def : Pat<(setcc (f32 FP:$a), (f32 FP:$b), SETO),   (FCMPORD FP:$a, FP:$b)>;
+def : Pat<(setcc (f32 FP:$a), (f32 FP:$b), SETUO),  (FCMPUNORD FP:$a, FP:$b)>;
+def : Pat<(setcc (f32 FP:$a), (f32 FP:$b), SETUGE), (FCMPNLT FP:$a, FP:$b)>;
+def : Pat<(setcc (f32 FP:$a), (f32 FP:$b), SETUGT), (FCMPNLE FP:$a, FP:$b)>;
+def : Pat<(setcc (f32 FP:$a), (f32 FP:$b), SETULE), (FCMPNGT FP:$a, FP:$b)>;
+def : Pat<(setcc (f32 FP:$a), (f32 FP:$b), SETULT), (FCMPNGE FP:$a, FP:$b)>;
+def : Pat<(setcc (f32 FP:$a), (f32 FP:$b), SETEQ),  (FCMPEQ FP:$a, FP:$b)>;
+def : Pat<(setcc (f32 FP:$a), (f32 FP:$b), SETGT),  (FCMPGT FP:$a, FP:$b)>;
+def : Pat<(setcc (f32 FP:$a), (f32 FP:$b), SETGE),  (FCMPGE FP:$a, FP:$b)>;
+def : Pat<(setcc (f32 FP:$a), (f32 FP:$b), SETLT),  (FCMPLT FP:$a, FP:$b)>;
+def : Pat<(setcc (f32 FP:$a), (f32 FP:$b), SETLE),  (FCMPLE FP:$a, FP:$b)>;
+def : Pat<(setcc (f32 FP:$a), (f32 FP:$b), SETNE),  (FCMPNE FP:$a, FP:$b)>;
+
 def PCMPEQUNCR0R0 : AForm<0x03, 0x0b, (outs PR:$dst), (ins PR:$qp),
     "($qp) cmp.eq.unc $dst, p0 = r0, r0">, isA;
 
@@ -425,6 +447,7 @@ let Constraints = "$src2 = $dst" in {
 // def->use hazard regardless. The i1 condition is already a PR (our setcc
 // yields one), so select(setcc(..), t, f) consumes the cmp we already emit.
 def : Pat<(i64 (select PR:$qp, GR:$t, GR:$f)), (CMOV  GR:$f, GR:$t, PR:$qp)>;
+def : Pat<(f32 (select PR:$qp, FP:$t, FP:$f)), (CFMOV FP:$f, FP:$t, PR:$qp)>;
 def : Pat<(f64 (select PR:$qp, FP:$t, FP:$f)), (CFMOV FP:$f, FP:$t, PR:$qp)>;
 // Selecting one predicate from two: there is no predicated predicate-move, so
 // widen each arm to a 0/1 GR (the zext-PR sequence), CMOV those, and compare the
