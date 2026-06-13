@@ -98,6 +98,16 @@ public:
 
   SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const override;
 
+  /// IA-64 ld/st carry no implicit ordering, so acquire/release/seq_cst
+  /// atomics need explicit barriers. Returning true makes AtomicExpand bracket
+  /// stronger-than-monotonic atomic accesses with fences (which we select to
+  /// 'mf') and demote the access itself to monotonic -- and a monotonic,
+  /// aligned <=8-byte access is just a plain ld/st on the hardware (lowered as
+  /// such in LowerOperation).
+  bool shouldInsertFencesForAtomic(const Instruction *I) const override {
+    return true;
+  }
+
   /// Lower a thread-local address access (ISD::GlobalTLSAddress) per the model
   /// TargetMachine::getTLSModel picks: local-exec / initial-exec materialise a
   /// tp-relative offset and add tp (r13); general/local-dynamic call

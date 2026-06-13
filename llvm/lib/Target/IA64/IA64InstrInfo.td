@@ -635,6 +635,17 @@ let canFoldAsLoad = 1 in {
 def POPCNT : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src),
   "popcnt $dst = $src", [(set GR:$dst, (ctpop GR:$src))]>, isI;
 
+// Memory fence. IA-64 ld/st are unordered beyond data dependence, so every
+// atomic ordering above monotonic is realised as an 'mf' barrier (the type
+// legalizer / AtomicExpand reduces acquire/release/seq_cst to monotonic
+// access + fence). One full fence covers all of them. The atomic_fence node
+// carries chain + side-effect (but not mayLoad/mayStore), so hasSideEffects=1
+// matches its inferred properties and keeps the mf from being reordered or
+// deleted.
+let hasSideEffects = 1 in
+def MF : AForm<0x03, 0x0b, (outs), (ins), "mf">, isM;
+def : Pat<(atomic_fence timm, timm), (MF)>;
+
 // some FP stuff:
 // Double-precision (f64) arithmetic carries the .d completer (53-bit rounding);
 // the unsuffixed forms below are the extended (f80) ops, and the .s forms are

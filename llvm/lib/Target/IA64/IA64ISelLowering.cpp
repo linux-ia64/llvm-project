@@ -306,6 +306,21 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::STACKRESTORE, MVT::Other, Expand);
   setOperationAction(ISD::DYNAMIC_STACKALLOC, MVT::i64, Expand);
 
+  // Atomics. An aligned <=8-byte ld/st is atomic on the hardware, but LLVM
+  // represents an atomic access as a distinct node (ISD::ATOMIC_LOAD/STORE)
+  // that the selector won't turn into ld8/st8 on its own. Custom-lower them to
+  // a plain load/store carrying the same (atomic) memory operand; see
+  // LowerOperation. Ordering is handled separately: shouldInsertFencesForAtomic
+  // asks AtomicExpand to wrap stronger orderings with fences and demote the
+  // access to monotonic, so the only atomic load/store we ever lower here is
+  // monotonic. The fences become ISD::ATOMIC_FENCE, selected to 'mf'.
+  setMaxAtomicSizeInBitsSupported(64);
+  for (MVT VT : {MVT::i8, MVT::i16, MVT::i32, MVT::i64}) {
+    setOperationAction(ISD::ATOMIC_LOAD, VT, Custom);
+    setOperationAction(ISD::ATOMIC_STORE, VT, Custom);
+  }
+  setOperationAction(ISD::ATOMIC_FENCE, MVT::Other, Legal);
+
   setStackPointerRegisterToSaveRestore(IA64::r12);
 
   // The pre-removal backend reported a Log2 function alignment of 5, i.e. a
@@ -853,6 +868,32 @@ SDValue IA64TargetLowering::LowerOperation(SDValue Op,
       return DAG.getNode(ISD::XOR, dl, MVT::i1, Xor,
                          DAG.getConstant(1, dl, MVT::i1));
     report_fatal_error("IA64: unhandled i1 SETCC condition (expected eq/ne)");
+  }
+  case ISD::ATOMIC_LOAD: {
+    // Lower a monotonic atomic load (AtomicExpand has already split off any
+    // stronger ordering into fences) to a plain load with the same atomic
+    // memory operand. The existing ISD::LOAD selector picks ld1/ld2/ld4/ld8 by
+    // the memory type and applies the zero/sign extension carried here.
+    AtomicSDNode *AN = cast<AtomicSDNode>(Op);
+    SDLoc dl(Op);
+    return DAG.getExtLoad(AN->getExtensionType(), dl, Op.getValueType(),
+                          AN->getChain(), AN->getBasePtr(), AN->getMemoryVT(),
+                          AN->getMemOperand());
+  }
+  case ISD::ATOMIC_STORE: {
+    // Mirror of ATOMIC_LOAD: a monotonic atomic store becomes a plain (possibly
+    // truncating) store. The value is promoted to i64, so a narrow access is a
+    // truncating store keyed on the memory type, which the store selector
+    // handles.
+    AtomicSDNode *AN = cast<AtomicSDNode>(Op);
+    SDLoc dl(Op);
+    SDValue Val = AN->getVal();
+    EVT MemVT = AN->getMemoryVT();
+    if (MemVT == Val.getValueType())
+      return DAG.getStore(AN->getChain(), dl, Val, AN->getBasePtr(),
+                          AN->getMemOperand());
+    return DAG.getTruncStore(AN->getChain(), dl, Val, AN->getBasePtr(), MemVT,
+                             AN->getMemOperand());
   }
   case ISD::VASTART: {
     // va_start stores the address of the register save area (the first variadic
