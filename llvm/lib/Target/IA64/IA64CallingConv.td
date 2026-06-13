@@ -25,9 +25,6 @@ def CC_IA64 : CallingConv<[
   // Integer types smaller than a register are passed as i64.
   CCIfType<[i1, i8, i16, i32], CCPromoteToType<i64>>,
 
-  // f32 is passed as f64.
-  CCIfType<[f32], CCPromoteToType<f64>>,
-
   // long double (f80): one FP register, shadowing two GR parameter slots.
   CCIfType<[f80], CCCustom<"CC_IA64_F80">>,
 
@@ -35,12 +32,12 @@ def CC_IA64 : CallingConv<[
   // registers r32-r39.
   CCIfType<[i64], CCAssignToReg<[r32, r33, r34, r35, r36, r37, r38, r39]>>,
 
-  // FP scalars (f64; f32 was promoted above): one positional parameter slot
-  // each. A fixed arg arrives in F8-F15 while *reserving* its GR slot so a
-  // following integer keeps its slot; a variadic arg arrives in the GR slot in
-  // memory format (psABI 8.5.4). CCAssignToRegWithShadow cannot express the
-  // "reserve the slot, not the FP-indexed GR" rule, so use a custom hook.
-  CCIfType<[f64], CCCustom<"CC_IA64_FP">>,
+  // FP scalars: one positional parameter slot each. A fixed arg arrives in
+  // F8-F15 while *reserving* its GR slot so a following integer keeps its slot;
+  // a variadic arg arrives in the GR slot in memory format (psABI 8.5.4).
+  // CCAssignToRegWithShadow cannot express the "reserve the slot, not the
+  // FP-indexed GR" rule, so use a custom hook.
+  CCIfType<[f64, f32], CCCustom<"CC_IA64_FP">>,
 
   // Everything beyond the eight register slots is passed in 8-byte stack slots.
   CCIfType<[i64], CCAssignToStack<8, 8>>

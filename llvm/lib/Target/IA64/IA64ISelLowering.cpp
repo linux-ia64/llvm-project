@@ -388,7 +388,7 @@ SDValue IA64TargetLowering::LowerFormalArguments(
       const TargetRegisterClass *RC;
       if (RegVT == MVT::i64)
         RC = &IA64::GRRegClass;
-      else if (RegVT == MVT::f64 || RegVT == MVT::f80)
+      else if (RegVT == MVT::f32 || RegVT == MVT::f64 || RegVT == MVT::f80)
         RC = &IA64::FPRegClass;
       else
         report_fatal_error("IA64: unhandled formal-argument register type");
