@@ -642,14 +642,21 @@ def POPCNT : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src),
 def FADDD : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2),
   "fadd.d $dst = $src1, $src2",
   [(set FP:$dst, (f64 (fadd FP:$src1, FP:$src2)))]>, isF;
-def FADDS: AForm<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2),
-  "fadd.s $dst = $src1, $src2">, isF;
+def FADDS : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2),
+  "fadd.s $dst = $src1, $src2",
+  [(set FP:$dst, (f32 (fadd FP:$src1, FP:$src2)))]>, isF;
 def FSUBD : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2),
   "fsub.d $dst = $src1, $src2",
   [(set FP:$dst, (f64 (fsub FP:$src1, FP:$src2)))]>, isF;
+def FSUBS : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2),
+  "fsub.s $dst = $src1, $src2",
+  [(set FP:$dst, (f32 (fsub FP:$src1, FP:$src2)))]>, isF;
 def FMPYD : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2),
   "fmpy.d $dst = $src1, $src2",
   [(set FP:$dst, (f64 (fmul FP:$src1, FP:$src2)))]>, isF;
+def FMPYS : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2),
+  "fmpy.s $dst = $src1, $src2",
+  [(set FP:$dst, (f32 (fmul FP:$src1, FP:$src2)))]>, isF;
 // Fused multiply-add forms. These match the ISD::FMA node (a single-rounding
 // a*b+c), which the DAG only forms when FP contraction is permitted -- so unlike
 // the pre-removal (fadd (fmul ...)) pattern they never silently fuse. fms is

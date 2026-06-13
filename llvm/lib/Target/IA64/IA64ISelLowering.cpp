@@ -253,17 +253,12 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
 
   setOperationAction(ISD::FREM, MVT::f32, Expand);
   setOperationAction(ISD::FREM, MVT::f64, Expand);
+  setOperationAction(ISD::FDIV, MVT::f32, Expand);
   setOperationAction(ISD::FDIV, MVT::f64, Expand);
   // f80 ('long double') has no inline divide/remainder; use the libcall
   // (__divxf3 / fmodl). fadd/fsub/fmpy/fma are native (FADD etc.).
   setOperationAction(ISD::FREM, MVT::f80, Expand);
   setOperationAction(ISD::FDIV, MVT::f80, Expand);
-
-  // f32 is a hardware type (held in the FP registers), but we model no separate
-  // single-precision arithmetic path: promote f32 arithmetic to f64 and round
-  // the result with fnorm.s (FP_ROUND).
-  for (unsigned Op : {ISD::FADD, ISD::FSUB, ISD::FMUL, ISD::FDIV})
-    setOperationAction(Op, MVT::f32, Promote);
 
   // We don't support sin/cos/sqrt/pow (expand to libcalls: sinl/cosl/sqrtl/...).
   for (MVT VT : {MVT::f32, MVT::f64, MVT::f80}) {
