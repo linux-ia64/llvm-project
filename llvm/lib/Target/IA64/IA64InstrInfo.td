@@ -802,26 +802,20 @@ def : Pat<(setcc (f80 FP:$a), (f80 FP:$b), SETLT),  (FCMPLT FP:$a, FP:$b)>;
 def : Pat<(setcc (f80 FP:$a), (f80 FP:$b), SETLE),  (FCMPLE FP:$a, FP:$b)>;
 def : Pat<(setcc (f80 FP:$a), (f80 FP:$b), SETNE),  (FCMPNE FP:$a, FP:$b)>;
 
-// Integer <-> floating-point conversions. Both the int->fp and fp->int actions
-// are keyed by the *integer* type, so f32-result/operand forms are not promoted
-// for us -- pattern them directly. fp->int fpext's an f32 operand to f64 then
-// fcvt; int->f32 converts in f64 then rounds to single (fnorm.s).
-def : Pat<(f64 (sint_to_fp GR:$src)), (FCVTXF  (SETFSIGD GR:$src))>;
-def : Pat<(f64 (uint_to_fp GR:$src)), (FCVTXUF (SETFSIGD GR:$src))>;
-def : Pat<(f32 (sint_to_fp GR:$src)), (FNORMS (f64 (FCVTXF  (f64 (SETFSIGD GR:$src)))))>;
-def : Pat<(f32 (uint_to_fp GR:$src)), (FNORMS (f64 (FCVTXUF (f64 (SETFSIGD GR:$src)))))>;
-def : Pat<(i64 (fp_to_sint (f64 FP:$src))), (GETFSIGD (FCVTFXTRUNC  FP:$src))>;
-def : Pat<(i64 (fp_to_uint (f64 FP:$src))), (GETFSIGD (FCVTFXUTRUNC FP:$src))>;
-def : Pat<(i64 (fp_to_sint (f32 FP:$src))), (GETFSIGD (FCVTFXTRUNC  (FNORMD FP:$src)))>;
-def : Pat<(i64 (fp_to_uint (f32 FP:$src))), (GETFSIGD (FCVTFXUTRUNC (FNORMD FP:$src)))>;
-
-// int <-> f80. fcvt.xf produces an exact 80-bit double-extended value from any
-// 64-bit integer (the format has a 64-bit significand), so -- unlike f64 -- no
-// rounding (fnorm) is needed on the int->fp side.
+// Integer <-> floating-point conversions.
+// Converted integer lands in f80 form (full 82-bit width), normalize using
+// FNORM if f64/f32 requested.
+// Converted float is always rounded to zero (.trunc variant of fcvt.fx).
 def : Pat<(f80 (sint_to_fp GR:$src)), (FCVTXF  (SETFSIGD GR:$src))>;
 def : Pat<(f80 (uint_to_fp GR:$src)), (FCVTXUF (SETFSIGD GR:$src))>;
-def : Pat<(i64 (fp_to_sint (f80 FP:$src))), (GETFSIGD (FCVTFXTRUNC  FP:$src))>;
-def : Pat<(i64 (fp_to_uint (f80 FP:$src))), (GETFSIGD (FCVTFXUTRUNC FP:$src))>;
+def : Pat<(f64 (sint_to_fp GR:$src)), (FNORMD (FCVTXF (SETFSIGD GR:$src)))>;
+def : Pat<(f64 (uint_to_fp GR:$src)), (FNORMD (FCVTXUF (SETFSIGD GR:$src)))>;
+def : Pat<(f32 (sint_to_fp GR:$src)), (FNORMS (f64 (FCVTXF  (f64 (SETFSIGD GR:$src)))))>;
+def : Pat<(f32 (uint_to_fp GR:$src)), (FNORMS (f64 (FCVTXUF (f64 (SETFSIGD GR:$src)))))>;
+foreach vt = [f32, f64, f80] in {
+  def : Pat<(i64 (fp_to_sint (vt FP:$src))), (GETFSIGD (FCVTFXTRUNC  FP:$src))>;
+  def : Pat<(i64 (fp_to_uint (vt FP:$src))), (GETFSIGD (FCVTFXUTRUNC FP:$src))>;
+}
 
 def GETFD : AForm<0x03, 0x0b, (outs GR:$dst), (ins FP:$src),
   "getf.d $dst = $src">, isM;
