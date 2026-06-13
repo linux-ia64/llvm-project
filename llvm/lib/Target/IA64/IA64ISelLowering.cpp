@@ -314,11 +314,16 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
   // asks AtomicExpand to wrap stronger orderings with fences and demote the
   // access to monotonic, so the only atomic load/store we ever lower here is
   // monotonic. The fences become ISD::ATOMIC_FENCE, selected to 'mf'.
+  //
+  // Only the legal integer type i64 is marked Custom: a narrow (i8/i16/i32)
+  // atomic load/store has an illegal type and is first widened by the *type*
+  // legalizer (PromoteIntRes_Atomic0 / PromoteIntOp_ATOMIC_STORE) to an i64
+  // access carrying the narrow memory VT, which then reaches LowerOperation as
+  // an i64 Custom op. Marking the narrow types Custom instead would divert type
+  // legalization into ReplaceNodeResults (which we do not implement) and abort.
   setMaxAtomicSizeInBitsSupported(64);
-  for (MVT VT : {MVT::i8, MVT::i16, MVT::i32, MVT::i64}) {
-    setOperationAction(ISD::ATOMIC_LOAD, VT, Custom);
-    setOperationAction(ISD::ATOMIC_STORE, VT, Custom);
-  }
+  setOperationAction(ISD::ATOMIC_LOAD, MVT::i64, Custom);
+  setOperationAction(ISD::ATOMIC_STORE, MVT::i64, Custom);
   setOperationAction(ISD::ATOMIC_FENCE, MVT::Other, Legal);
 
   setStackPointerRegisterToSaveRestore(IA64::r12);
