@@ -87,6 +87,20 @@ BitVector IA64RegisterInfo::getReservedRegs(const MachineFunction &MF) const {
   // save vreg is allocated to a real scratch GR (r3 for a leaf function).
   Reserved.set(IA64::AR_PFS);
   Reserved.set(IA64::B6);  // indirect-call branch target (set up per call site)
+
+  // Cap the stacked-GPR register frame. 'alloc' carves a frame of
+  // (locals + outputs) stacked registers out of r32-r127, and the architecture
+  // limits that frame to 96 registers. Reserving the last 8 general registers
+  // allow them to become output registers (out0-out7) in case of register
+  // pressure.
+  Reserved.set(IA64::r120);
+  Reserved.set(IA64::r121);
+  Reserved.set(IA64::r122);
+  Reserved.set(IA64::r123);
+  Reserved.set(IA64::r124);
+  Reserved.set(IA64::r125);
+  Reserved.set(IA64::r126);
+  Reserved.set(IA64::r127);
   return Reserved;
 }
 
