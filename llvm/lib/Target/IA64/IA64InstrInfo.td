@@ -139,17 +139,12 @@ def ADDS : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, s14imm:$imm),
            [(set GR:$dst, (add GR:$src1, immSExt14:$imm))]>, isA;
 
 // 'addl' (A5) carries a wider signed-22-bit immediate, but it pays for those
-// extra bits with a 2-bit register field: its addend MUST be r0-r3 (in practice
-// r2/r3, since r0 is zero and r1 the GP). That restriction is modeled by the
-// GR03 register class on $src1 (see IA64RegisterInfo.td) -- the allocator picks
-// r2/r3 for it (today only r3 is unreserved), inserting a copy when the value
-// lives elsewhere; the unsatisfiable cases never arise because the class itself
-// excludes every other register. Still a real add-immediate like 'adds', just
-// over the narrower addend set.
-let AddedComplexity = 1 in
+// extra bits with a 2-bit register field: its addend must be r0-r3 (in practice
+// only r0, since r1/r2 are reserved and r3 is the lone allocatable member of
+// GR03).
+// Used for constant materialization only.
 def ADDL : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR03:$src1, s22imm:$imm),
-           "addl $dst = $imm, $src1",
-           [(set GR:$dst, (add GR03:$src1, immSExt22:$imm))]>, isA;
+           "addl $dst = $imm, $src1", []>, isA;
 
 def MOVL : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins s64imm:$imm),
            "movl $dst = $imm",
