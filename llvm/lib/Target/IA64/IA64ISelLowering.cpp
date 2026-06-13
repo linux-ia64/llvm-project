@@ -853,6 +853,19 @@ SDValue IA64TargetLowering::LowerOperation(SDValue Op,
   switch (Op.getOpcode()) {
   default:
     report_fatal_error("IA64: unimplemented custom operation lowering");
+  case ISD::FRAMEADDR: {
+    // __builtin_frame_address(0): the address of the current frame, which we
+    // take to be the frame register (the frame pointer r5 if one is forced,
+    // else the stack pointer r12).
+    if (Op.getConstantOperandVal(0) != 0)
+      report_fatal_error("IA64: __builtin_frame_address with nonzero depth is "
+                         "not supported");
+    MachineFunction &MF = DAG.getMachineFunction();
+    MF.getFrameInfo().setFrameAddressIsTaken(true);
+    Register FrameReg = MF.getSubtarget().getRegisterInfo()->getFrameRegister(MF);
+    return DAG.getCopyFromReg(DAG.getEntryNode(), SDLoc(Op), FrameReg,
+                              Op.getValueType());
+  }
   case ISD::GlobalTLSAddress:
     return LowerGlobalTLSAddress(Op, DAG);
   case ISD::SETCC: {
