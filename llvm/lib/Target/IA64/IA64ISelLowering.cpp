@@ -809,7 +809,7 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   Chain = DAG.getCALLSEQ_END(Chain, NumBytes, 0, InGlue, dl);
   InGlue = Chain.getValue(1);
 
-  // Read the return value(s) out of r8 / F8, narrowing back to the declared type.
+  // Read the return value(s) out of r8 / F8.
   SmallVector<CCValAssign, 16> RVLocs;
   CCState RVInfo(CallConv, isVarArg, MF, RVLocs, *DAG.getContext());
   RVInfo.AnalyzeCallResult(Ins, RetCC_IA64);

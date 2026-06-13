@@ -81,7 +81,6 @@ def CC_IA64_Call : CallingConv<[
 //===----------------------------------------------------------------------===//
 def RetCC_IA64 : CallingConv<[
   CCIfType<[i1, i8, i16, i32], CCPromoteToType<i64>>,
-  CCIfType<[f32], CCPromoteToType<f64>>,
 
   // Scalar integers/pointers return in r8 (65-128 bits in r8,r9). Aggregates up
   // to 256 bits are returned by value in r8-r11 -- clang coerces them to an
@@ -92,6 +91,6 @@ def RetCC_IA64 : CallingConv<[
 
   // Floating-point and homogeneous FP aggregates return in F8-F15 (a coerced
   // [N x double]/[N x float] supplies one value per register).
-  CCIfType<[f64], CCAssignToReg<[F8, F9, F10, F11, F12, F13, F14, F15]>>,
+  CCIfType<[f64, f32], CCAssignToReg<[F8, F9, F10, F11, F12, F13, F14, F15]>>,
   CCIfType<[f80], CCAssignToReg<[F8, F9, F10, F11, F12, F13, F14, F15]>>
 ]>;
