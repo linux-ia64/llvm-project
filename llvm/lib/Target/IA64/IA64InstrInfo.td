@@ -768,24 +768,18 @@ def FNORMD : AForm<0x03, 0x0b, (outs FP:$dst), (ins FP:$src),
   "fnorm.d $dst = $src">, isF;
 def FNORMS : AForm<0x03, 0x0b, (outs FP:$dst), (ins FP:$src),
   "fnorm.s $dst = $src">, isF;
-// fnorm with no precision completer rounds to the dynamic (sf0 = 80-bit
-// extended) precision: a no-op widening for f32/f64 -> f80.
-def FNORM : AForm<0x03, 0x0b, (outs FP:$dst), (ins FP:$src),
-  "fnorm $dst = $src">, isF;
 
-// FP register<->register rounding/widening. The FNORM* instructions are
-// untyped (no DAG pattern of their own), and the FP register class now holds
-// three sizes (f32/f64/f80), so each source type must be named explicitly --
-// otherwise e.g. "fpround to f32" is ambiguous between an f64 and an f80 source.
-// fpextend to f64 (from f32) and fpround to f64 (from f80) each have a unique
-// source, so they need no annotation.
-def : Pat<(f64 (fpextend FP:$src)),         (FNORMD FP:$src)>;  // f32 -> f64
+// FP register<->register rounding/widening.
+// Rounding uses FNORM-type instructions (FNORMD for f80->f64, FNORMS for
+// f80/f64->f32).
+// Widening needs no instruction as all sources of f32/f64 are correctly
+// widened already.
 def : Pat<(f64 (fpround  FP:$src)),         (FNORMD FP:$src)>;  // f80 -> f64
 def : Pat<(f32 (fpround (f64 FP:$src))),    (FNORMS FP:$src)>;
 def : Pat<(f32 (fpround (f80 FP:$src))),    (FNORMS FP:$src)>;
-// f{32,64} -> f80 widening (exact; fnorm = round to the dynamic sf0 precision).
-def : Pat<(f80 (fpextend (f32 FP:$src))),   (FNORM  FP:$src)>;
-def : Pat<(f80 (fpextend (f64 FP:$src))),   (FNORM  FP:$src)>;
+def : Pat<(f64 (fpextend FP:$src)),         (COPY_TO_REGCLASS FP:$src, FP)>;
+def : Pat<(f80 (fpextend (f32 FP:$src))),   (COPY_TO_REGCLASS FP:$src, FP)>;
+def : Pat<(f80 (fpextend (f64 FP:$src))),   (COPY_TO_REGCLASS FP:$src, FP)>;
 
 // f80 comparisons reuse the (precision-independent) FCMP* instructions; the
 // register compare looks at the full 82-bit value. Mirror the f64 SETCC rules.
