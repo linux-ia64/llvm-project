@@ -27,6 +27,7 @@
 #include "llvm/CodeGen/SelectionDAGISel.h"
 #include "llvm/CodeGen/SelectionDAGNodes.h"
 #include "llvm/IR/Function.h"
+#include "llvm/Support/AtomicOrdering.h"
 #include "llvm/Support/ErrorHandling.h"
 
 using namespace llvm;
@@ -255,6 +256,50 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
     if (InGlue.getNode())
       Ops.push_back(InGlue);
     CurDAG->SelectNodeTo(N, Opc, MVT::Other, MVT::Glue, Ops);
+    return;
+  }
+
+  case ISD::ATOMIC_CMP_SWAP: {
+    // cmpxchg: move the comparand into ar.ccv, then the size-keyed cmpxchg
+    // (which reads ar.ccv) returns the old word and stores $new on a match.
+    // Operands of the node are (chain, ptr, cmp, new).
+    AtomicSDNode *AN = cast<AtomicSDNode>(N);
+    SDLoc dl(N);
+    SDValue Chain = AN->getChain();
+    SDValue Ptr = AN->getBasePtr();
+    SDValue Cmp = N->getOperand(2);
+    SDValue New = N->getOperand(3);
+
+    unsigned Opc;
+    switch (AN->getMemoryVT().getSimpleVT().SimpleTy) {
+    case MVT::i8:  Opc = IA64::CMPXCHG1; break;
+    case MVT::i16: Opc = IA64::CMPXCHG2; break;
+    case MVT::i32: Opc = IA64::CMPXCHG4; break;
+    case MVT::i64: Opc = IA64::CMPXCHG8; break;
+    default:
+      report_fatal_error("IA64: cannot select a cmpxchg of this type");
+    }
+
+    // The cmpxchg itself is .acq (acquire). For release/seq_cst, prepend a full
+    // fence so prior memory effects are ordered before the swap; the combination
+    // is a correct (conservative) full barrier.
+    if (isReleaseOrStronger(AN->getMergedOrdering()))
+      Chain =
+          SDValue(CurDAG->getMachineNode(IA64::MF, dl, MVT::Other, Chain), 0);
+
+    // mov ar.ccv = cmp, glued to the cmpxchg so it stays immediately before it
+    // (and the ar.ccv physreg def/use is not separated by another writer).
+    SDValue Ccv =
+        SDValue(CurDAG->getMachineNode(IA64::MOV_TO_AR_CCV, dl, MVT::Glue, Cmp),
+                0);
+
+    SDValue Ops[] = {Ptr, New, Chain, Ccv};
+    MachineSDNode *Cas =
+        CurDAG->getMachineNode(Opc, dl, N->getValueType(0), MVT::Other, Ops);
+    CurDAG->setNodeMemRefs(Cas, {AN->getMemOperand()});
+    ReplaceUses(SDValue(N, 0), SDValue(Cas, 0)); // old value
+    ReplaceUses(SDValue(N, 1), SDValue(Cas, 1)); // chain
+    CurDAG->RemoveDeadNode(N);
     return;
   }
 

@@ -377,6 +377,13 @@ def out7 : GR<7, "out7">, DwarfRegNum<[127]>;
 // "previous function state" application register
 def AR_PFS : GR<0, "ar.pfs">, DwarfRegNum<[331]>;
 
+// "compare and exchange compare value" application register (ar.ccv, AR[32]):
+// cmpxchg reads its comparand from here. Not a member of any allocatable class
+// (so it is implicitly reserved); written by MOV_TO_AR_CCV and read by the
+// CMPXCHG* instructions as an implicit physreg, which is enough for the bundler
+// to force the required stop between them.
+def AR_CCV : GR<0, "ar.ccv">, DwarfRegNum<[332]>;
+
 // "return pointer" (this is really branch register b0)
 def rp : GR<0, "rp">, DwarfRegNum<[-1]>;
 

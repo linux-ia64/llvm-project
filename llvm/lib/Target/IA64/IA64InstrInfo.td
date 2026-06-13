@@ -646,6 +646,30 @@ let hasSideEffects = 1 in
 def MF : AForm<0x03, 0x0b, (outs), (ins), "mf">, isM;
 def : Pat<(atomic_fence timm, timm), (MF)>;
 
+// Atomic compare-and-exchange. The IA-64 cmpxchg takes its comparand from the
+// ar.ccv application register, so the comparand is first moved there by
+// MOV_TO_AR_CCV; the cmpxchg then atomically compares ar.ccv against the memory
+// word, stores $new on a match, and returns the original word (zero-extended
+// into the GR for the narrow forms). Both are selected by hand in
+// IA64ISelDAGToDAG: the mov is glued immediately before the cmpxchg, and the
+// ar.ccv physreg def/use makes the bundler insert the required stop between
+// them. The .acq completer gives the access acquire ordering; the
+// release/seq_cst side is an 'mf' the selector prepends.
+let Defs = [AR_CCV] in
+def MOV_TO_AR_CCV : AForm<0x03, 0x0b, (outs), (ins GR:$src),
+  "mov ar.ccv = $src">, isM;
+
+let mayLoad = 1, mayStore = 1, hasSideEffects = 1, Uses = [AR_CCV] in {
+  def CMPXCHG1 : AForm<0x03, 0x0b, (outs GR:$dst), (ins GR:$ptr, GR:$new),
+    "cmpxchg1.acq $dst = [$ptr], $new, ar.ccv">, isM;
+  def CMPXCHG2 : AForm<0x03, 0x0b, (outs GR:$dst), (ins GR:$ptr, GR:$new),
+    "cmpxchg2.acq $dst = [$ptr], $new, ar.ccv">, isM;
+  def CMPXCHG4 : AForm<0x03, 0x0b, (outs GR:$dst), (ins GR:$ptr, GR:$new),
+    "cmpxchg4.acq $dst = [$ptr], $new, ar.ccv">, isM;
+  def CMPXCHG8 : AForm<0x03, 0x0b, (outs GR:$dst), (ins GR:$ptr, GR:$new),
+    "cmpxchg8.acq $dst = [$ptr], $new, ar.ccv">, isM;
+}
+
 // some FP stuff:
 // Double-precision (f64) arithmetic carries the .d completer (53-bit rounding);
 // the unsuffixed forms below are the extended (f80) ops, and the .s forms are

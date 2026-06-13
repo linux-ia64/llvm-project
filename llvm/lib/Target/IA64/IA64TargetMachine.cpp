@@ -120,6 +120,7 @@ public:
     return getTM<IA64TargetMachine>();
   }
 
+  void addIRPasses() override;
   bool addInstSelector() override;
   void addPreRegAlloc() override;
   void addPreEmitPass() override;
@@ -128,6 +129,18 @@ public:
 
 TargetPassConfig *IA64TargetMachine::createPassConfig(PassManagerBase &PM) {
   return new IA64PassConfig(*this, PM);
+}
+
+void IA64PassConfig::addIRPasses() {
+  // Expand atomics the backend cannot select directly: turn every atomicrmw
+  // into a cmpxchg loop (shouldExpandAtomicRMWInIR) and bracket stronger-than-
+  // monotonic atomics with fences (shouldInsertFencesForAtomic). This is no
+  // longer part of the target-independent addIRPasses, so each target adds it
+  // (cf. SparcPassConfig); without it atomicrmw reaches isel as AtomicLoadAdd
+  // etc. and fails to select, and ordering fences are never inserted.
+  addPass(createAtomicExpandLegacyPass());
+
+  TargetPassConfig::addIRPasses();
 }
 
 bool IA64PassConfig::addInstSelector() {

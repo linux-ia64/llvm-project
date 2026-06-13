@@ -108,6 +108,16 @@ public:
     return true;
   }
 
+  /// The only atomic read-modify-write IA-64 has a single instruction for is
+  /// fetchadd (and only for a few immediates), so lower every atomicrmw
+  /// (add/sub/and/or/xor/nand/min/max/xchg/...) to a cmpxchg loop in IR. That
+  /// reduces all of them to the one primitive the backend selects natively,
+  /// ISD::ATOMIC_CMP_SWAP (cmpxchg{1,2,4,8}). Correct, not yet optimized.
+  AtomicExpansionKind
+  shouldExpandAtomicRMWInIR(const AtomicRMWInst *RMW) const override {
+    return AtomicExpansionKind::CmpXChg;
+  }
+
   /// Lower a thread-local address access (ISD::GlobalTLSAddress) per the model
   /// TargetMachine::getTLSModel picks: local-exec / initial-exec materialise a
   /// tp-relative offset and add tp (r13); general/local-dynamic call
