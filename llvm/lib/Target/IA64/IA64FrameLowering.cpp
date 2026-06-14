@@ -77,13 +77,55 @@ void IA64FrameLowering::emitPrologue(MachineFunction &MF,
   }
   assert(DstRegOfPseudoAlloc && "no PSEUDO_ALLOC in entry block");
 
-  // 'alloc' must be the first instruction in the function
+  // For a non-leaf function, br.call overwrites the return pointer (b0/rp), so
+  // we must preserve the caller's return address for our own br.ret. The
+  // register allocator already does this lazily -- it copies rp into a stacked
+  // local around each call -- but those copies land in a different register at
+  // each call site, so there is no single location the unwinder can name. To
+  // make the frame describable by one '.save rp, <reg>' unwind directive --
+  // which, with '.save ar.pfs', is what lets gdb/libunwind walk past this frame
+  // from anywhere in the body -- park rp once here, in a fresh stacked local
+  // just above the ones the allocator used (a register stack engine local is
+  // preserved across calls for free). emitEpilogue restores b0 from it.
+  //
+  // hasCalls() is the right test: it covers libcalls (e.g. the __divdi3 a sdiv
+  // lowers to) that clobber rp without any IR-level call, which a check earlier
+  // than frame lowering could not see.
+  IA64FunctionInfo *FInfo = MF.getInfo<IA64FunctionInfo>();
+  Register SavedRPReg;
+  if (MFI.hasCalls()) {
+    assert(NumStackedGPRsUsed < 96 && "no free stacked GPR for the rp save");
+    SavedRPReg = RegsInOrder[NumStackedGPRsUsed];
+    // Reserve it as an extra local in the 'alloc' frame. The output registers
+    // (out0-out7) are symbolic and follow the locals, so gas shifts them up by
+    // one automatically; the absolutely-named locals below are unaffected.
+    ++NumStackedGPRsUsed;
+    FInfo->setSavedRPReg(SavedRPReg);
+  }
+
+  // 'alloc' must be the first instruction in the function. Tag it (and the rest
+  // of the prologue below) as frame setup so the asm printer can hang the IA-64
+  // unwind directives (.prologue / .save ar.pfs / .save rp / .fframe) off the
+  // right instructions.
   BuildMI(MBB, MBBI, DL, TII->get(IA64::ALLOC))
       .addReg(DstRegOfPseudoAlloc)
       .addImm(0)
       .addImm(NumStackedGPRsUsed)
       .addImm(NumOutRegsUsed)
-      .addImm(0);
+      .addImm(0)
+      .setMIFlag(MachineInstr::FrameSetup);
+
+  // Save the incoming return pointer into the parked local. Mark the local live
+  // in every later block so the value is correctly seen as live across the whole
+  // function (it is defined here and used in emitEpilogue, in another block).
+  if (SavedRPReg) {
+    BuildMI(MBB, MBBI, DL, TII->get(IA64::MOV), SavedRPReg)
+        .addReg(IA64::rp)
+        .setMIFlag(MachineInstr::FrameSetup);
+    for (MachineBasicBlock &Block : MF)
+      if (&Block != &MBB)
+        Block.addLiveIn(SavedRPReg);
+  }
 
   // Get the number of bytes to allocate from the FrameInfo.
   unsigned NumBytes = MFI.getStackSize();
@@ -106,21 +148,27 @@ void IA64FrameLowering::emitPrologue(MachineFunction &MF,
   if (NumBytes <= 8191) {
     BuildMI(MBB, MBBI, DL, TII->get(IA64::ADDIMM22), IA64::r12)
         .addReg(IA64::r12)
-        .addImm(-(int64_t)NumBytes);
+        .addImm(-(int64_t)NumBytes)
+        .setMIFlag(MachineInstr::FrameSetup);
   } else { // use r22 as a scratch register
     BuildMI(MBB, MBBI, DL, TII->get(IA64::MOVLIMM64), IA64::r22)
-        .addImm(-(int64_t)NumBytes);
+        .addImm(-(int64_t)NumBytes)
+        .setMIFlag(MachineInstr::FrameSetup);
     BuildMI(MBB, MBBI, DL, TII->get(IA64::ADD), IA64::r12)
         .addReg(IA64::r12)
-        .addReg(IA64::r22);
+        .addReg(IA64::r22)
+        .setMIFlag(MachineInstr::FrameSetup);
   }
 
   // Now, if we need to, save the old FP and set the new one.
   if (FP) {
     BuildMI(MBB, MBBI, DL, TII->get(IA64::ST8))
         .addReg(IA64::r12)
-        .addReg(IA64::r5);
-    BuildMI(MBB, MBBI, DL, TII->get(IA64::MOV), IA64::r5).addReg(IA64::r12);
+        .addReg(IA64::r5)
+        .setMIFlag(MachineInstr::FrameSetup);
+    BuildMI(MBB, MBBI, DL, TII->get(IA64::MOV), IA64::r5)
+        .addReg(IA64::r12)
+        .setMIFlag(MachineInstr::FrameSetup);
   }
 }
 
@@ -136,25 +184,40 @@ void IA64FrameLowering::emitEpilogue(MachineFunction &MF,
 
   unsigned NumBytes = MFI.getStackSize();
 
+  // Restore the incoming return pointer (b0/rp) from the local the prologue
+  // parked it in, so our br.ret returns to the caller. This also keeps that
+  // local live, anchoring the '.save rp' unwind region across the whole body.
+  if (Register SavedRPReg = MF.getInfo<IA64FunctionInfo>()->getSavedRPReg())
+    BuildMI(MBB, MBBI, DL, TII->get(IA64::MOV), IA64::rp)
+        .addReg(SavedRPReg)
+        .setMIFlag(MachineInstr::FrameDestroy);
+
   // If we need to, restore the old FP.
   if (FP) {
     // Copy the FP into the SP (discards allocas).
-    BuildMI(MBB, MBBI, DL, TII->get(IA64::MOV), IA64::r12).addReg(IA64::r5);
+    BuildMI(MBB, MBBI, DL, TII->get(IA64::MOV), IA64::r12)
+        .addReg(IA64::r5)
+        .setMIFlag(MachineInstr::FrameDestroy);
     // Restore the FP.
-    BuildMI(MBB, MBBI, DL, TII->get(IA64::LD8), IA64::r5).addReg(IA64::r5);
+    BuildMI(MBB, MBBI, DL, TII->get(IA64::LD8), IA64::r5)
+        .addReg(IA64::r5)
+        .setMIFlag(MachineInstr::FrameDestroy);
   }
 
   if (NumBytes != 0) {
     if (NumBytes <= 8191) {
       BuildMI(MBB, MBBI, DL, TII->get(IA64::ADDIMM22), IA64::r12)
           .addReg(IA64::r12)
-          .addImm(NumBytes);
+          .addImm(NumBytes)
+          .setMIFlag(MachineInstr::FrameDestroy);
     } else {
       BuildMI(MBB, MBBI, DL, TII->get(IA64::MOVLIMM64), IA64::r22)
-          .addImm(NumBytes);
+          .addImm(NumBytes)
+          .setMIFlag(MachineInstr::FrameDestroy);
       BuildMI(MBB, MBBI, DL, TII->get(IA64::ADD), IA64::r12)
           .addReg(IA64::r12)
-          .addReg(IA64::r22);
+          .addReg(IA64::r22)
+          .setMIFlag(MachineInstr::FrameDestroy);
     }
   }
 }

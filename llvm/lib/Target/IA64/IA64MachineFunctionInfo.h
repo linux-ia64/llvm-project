@@ -32,6 +32,15 @@ class IA64FunctionInfo : public MachineFunctionInfo {
   // registers here; LowerVASTART hands its address to va_start.
   int VarArgsFrameIndex = 0;
 
+  // The stacked local that emitPrologue parks the incoming return pointer
+  // (b0/rp) in, for a non-leaf function. It is picked just above the locals the
+  // allocator used (so the register stack engine preserves it across calls for
+  // free) and reserved by widening the 'alloc' frame; emitEpilogue restores b0
+  // from it before the return. The unwinder gets one fixed location to name in a
+  // '.save rp, <reg>' directive, which the asm printer reads off the FrameSetup
+  // 'mov <reg> = rp'. Left null for a leaf function, which never clobbers b0.
+  Register SavedRPReg;
+
 public:
   // How many 'out' registers are used by this MachineFunction. Used to compute
   // the appropriate entry in the 'alloc' instruction at the top of the
@@ -45,6 +54,9 @@ public:
 
   int getVarArgsFrameIndex() const { return VarArgsFrameIndex; }
   void setVarArgsFrameIndex(int FI) { VarArgsFrameIndex = FI; }
+
+  Register getSavedRPReg() const { return SavedRPReg; }
+  void setSavedRPReg(Register Reg) { SavedRPReg = Reg; }
 
   MachineFunctionInfo *
   clone(BumpPtrAllocator &Allocator, MachineFunction &DestMF,
