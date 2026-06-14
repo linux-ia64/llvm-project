@@ -24,15 +24,18 @@
 #include "IA64MCTargetDesc.h"
 #include "IA64InstPrinter.h"
 #include "IA64MCAsmInfo.h"
+#include "IA64TargetStreamer.h"
 #include "TargetInfo/IA64TargetInfo.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCInstPrinter.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
+#include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/MCTargetOptions.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/Compiler.h"
+#include "llvm/Support/FormattedStream.h"
 #include "llvm/TargetParser/Triple.h"
 
 using namespace llvm;
@@ -72,6 +75,19 @@ static MCInstPrinter *createIA64MCInstPrinter(const Triple & /*T*/,
   return new IA64InstPrinter(MAI, MII, MRI);
 }
 
+// The asm streamer carries the IA-64 unwind directives. There is no object
+// streamer (the backend has no integrated assembler), so the null streamer just
+// uses the no-op base class.
+static MCTargetStreamer *createIA64AsmTargetStreamer(MCStreamer &S,
+                                                     formatted_raw_ostream &OS,
+                                                     MCInstPrinter *) {
+  return new IA64TargetAsmStreamer(S, OS);
+}
+
+static MCTargetStreamer *createIA64NullTargetStreamer(MCStreamer &S) {
+  return new IA64TargetStreamer(S);
+}
+
 static MCSubtargetInfo *createIA64MCSubtargetInfo(const Triple &TT,
                                                   StringRef CPU, StringRef FS) {
   if (CPU.empty())
@@ -93,6 +109,10 @@ LLVMInitializeIA64TargetMC() {
   // Register the MC register info and the asm-output instruction printer.
   TargetRegistry::RegisterMCRegInfo(T, createIA64MCRegisterInfo);
   TargetRegistry::RegisterMCInstPrinter(T, createIA64MCInstPrinter);
+
+  // Register the target streamer that emits the IA-64 unwind directives.
+  TargetRegistry::RegisterAsmTargetStreamer(T, createIA64AsmTargetStreamer);
+  TargetRegistry::RegisterNullTargetStreamer(T, createIA64NullTargetStreamer);
 
   // Register the MC subtarget info.
   TargetRegistry::RegisterMCSubtargetInfo(T, createIA64MCSubtargetInfo);

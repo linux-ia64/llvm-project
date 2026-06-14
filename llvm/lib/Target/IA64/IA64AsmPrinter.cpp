@@ -15,9 +15,14 @@
 
 #include "IA64.h"
 #include "IA64MCInstLower.h"
+#include "MCTargetDesc/IA64InstPrinter.h"
 #include "MCTargetDesc/IA64MCAsmInfo.h"
+#include "MCTargetDesc/IA64MCTargetDesc.h"
+#include "MCTargetDesc/IA64TargetStreamer.h"
 #include "TargetInfo/IA64TargetInfo.h"
 #include "llvm/CodeGen/AsmPrinter.h"
+#include "llvm/CodeGen/MachineFrameInfo.h"
+#include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/IR/Function.h"
 #include "llvm/MC/MCExpr.h"
@@ -32,6 +37,18 @@ using namespace llvm;
 
 namespace {
 class IA64AsmPrinter : public AsmPrinter {
+  // Per-function state for driving the IA-64 unwind directives (see
+  // emitInstruction). Reset in emitFunctionBodyStart.
+  bool EmittedBody = false;
+  bool EmittedFFrame = false;
+  // A framed function with more than one epilogue needs .label_state /
+  // .copy_state around its '.restore sp's; otherwise gas rejects the second one.
+  bool NeedCopyState = false;
+
+  IA64TargetStreamer &getTargetStreamer() {
+    return static_cast<IA64TargetStreamer &>(*OutStreamer->getTargetStreamer());
+  }
+
 public:
   static char ID;
 
@@ -42,6 +59,9 @@ public:
   StringRef getPassName() const override { return "IA64 Assembly Printer"; }
 
   void emitStartOfAsmFile(Module &M) override;
+  void emitFunctionEntryLabel() override;
+  void emitFunctionBodyStart() override;
+  void emitFunctionBodyEnd() override;
   void emitInstruction(const MachineInstr *MI) override;
   const MCExpr *lowerConstant(const Constant *CV, const Constant *BaseCV,
                               uint64_t Offset) override;
@@ -58,7 +78,90 @@ void IA64AsmPrinter::emitStartOfAsmFile(Module & /*M*/) {
   OutStreamer->emitRawText(StringRef("\t.psr\tabi64"));
 }
 
+void IA64AsmPrinter::emitFunctionEntryLabel() {
+  // Open the unwind region before the function label, the way gcc does. The
+  // prologue/body directives are emitted per-instruction in emitInstruction;
+  // .endp follows the body in emitFunctionBodyEnd.
+  getTargetStreamer().emitProc(CurrentFnSym);
+  AsmPrinter::emitFunctionEntryLabel();
+}
+
+void IA64AsmPrinter::emitFunctionBodyStart() {
+  EmittedBody = false;
+  EmittedFFrame = false;
+
+  // A '.restore sp' closes the unwind region it sits in, so a framed function
+  // with several return blocks needs .label_state/.copy_state to re-open it for
+  // each one. Single-epilogue (or frameless) functions emit a bare '.restore'
+  // (or none), matching gcc. getStackSize() != 0 is exactly the has-a-frame
+  // (and therefore has-a-'.restore sp') condition.
+  unsigned RetBlocks = 0;
+  bool Framed = MF->getFrameInfo().getStackSize() != 0;
+  if (Framed)
+    for (const MachineBasicBlock &MBB : *MF)
+      if (!MBB.empty() && MBB.back().getOpcode() == IA64::RET)
+        ++RetBlocks;
+  NeedCopyState = Framed && RetBlocks > 1;
+}
+
+void IA64AsmPrinter::emitFunctionBodyEnd() {
+  getTargetStreamer().emitEndP(CurrentFnSym);
+}
+
 void IA64AsmPrinter::emitInstruction(const MachineInstr *MI) {
+  IA64TargetStreamer &TS = getTargetStreamer();
+
+  // Emit the IA-64 unwind directive that describes this prologue/epilogue
+  // instruction, before the instruction itself, so gas associates the unwind
+  // record with the right PC. The prologue (alloc, the rp save, the stack
+  // adjust) is tagged FrameSetup by frame lowering and ISel; the stack restore
+  // is tagged FrameDestroy. The first non-prologue instruction ends the
+  // prologue region with .body.
+  if (MI->getFlag(MachineInstr::FrameSetup)) {
+    switch (MI->getOpcode()) {
+    case IA64::ALLOC:
+      // alloc copies the caller's ar.pfs into its destination register.
+      TS.emitPrologueDirective();
+      TS.emitSaveARPFS(
+          IA64InstPrinter::getRegisterName(MI->getOperand(0).getReg().asMCReg()));
+      break;
+    case IA64::MOV:
+      // The return-pointer save is 'mov rN = rp'; distinguish it from the
+      // frame-pointer setup 'mov r5 = r12' by its source register.
+      if (MI->getOperand(1).getReg() == IA64::rp)
+        TS.emitSaveRP(IA64InstPrinter::getRegisterName(
+            MI->getOperand(0).getReg().asMCReg()));
+      break;
+    case IA64::ADDIMM22:
+    case IA64::ADD:
+      // The stack-pointer adjustment writes r12; the .fframe value is the final
+      // frame size frame lowering settled on.
+      if (!EmittedFFrame && MI->getOperand(0).getReg() == IA64::r12) {
+        TS.emitFFrame(MF->getFrameInfo().getStackSize());
+        EmittedFFrame = true;
+      }
+      break;
+    }
+  } else if (!EmittedBody && !MI->isMetaInstruction() &&
+             MI->getOpcode() != IA64::STOP) {
+    // End the prologue region at the first real body instruction. Skip the
+    // bundler's STOP (';;') pseudo: one can land between prologue instructions
+    // (e.g. the forced stop after 'alloc'), and treating it as the body start
+    // would push .fframe / a late .save past .body.
+    TS.emitBody();
+    EmittedBody = true;
+    if (NeedCopyState)
+      TS.emitLabelState(1);
+  }
+
+  if (MI->getFlag(MachineInstr::FrameDestroy) &&
+      (MI->getOpcode() == IA64::ADDIMM22 || MI->getOpcode() == IA64::ADD) &&
+      MI->getOperand(0).getReg() == IA64::r12) {
+    if (NeedCopyState)
+      TS.emitCopyState(1);
+    TS.emitRestoreSP();
+  }
+
   IA64MCInstLower Lower(OutContext, *this);
   MCInst TmpInst;
   Lower.Lower(MI, TmpInst);
