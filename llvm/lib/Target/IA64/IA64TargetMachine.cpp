@@ -18,9 +18,12 @@
 #include "IA64TargetMachine.h"
 #include "IA64.h"
 #include "IA64MachineFunctionInfo.h"
+#include "IA64RegisterInfo.h"
 #include "MCTargetDesc/IA64MCTargetDesc.h"
 #include "TargetInfo/IA64TargetInfo.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
+#include "llvm/CodeGen/MachineInstr.h"
+#include "llvm/IR/Function.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
 #include "llvm/CodeGen/TargetPassConfig.h"
@@ -111,6 +114,64 @@ struct IA64AllocHoist : public MachineFunctionPass {
 };
 char IA64AllocHoist::ID = 0;
 
+// Rewrite the symbolic output registers out0-out7 in debug values to the real
+// stacked register they alias. gas resolves 'out0' to r(32+inputs+locals) from
+// the 'alloc', but the .td gives out0-out7 the fixed DwarfRegNum 120-127 (=
+// physical r120-r127), so a variable that lives in an output register at some PC
+// -- e.g. a parameter already moved into place for a call -- would be read by
+// gdb from the wrong register (seen as a bogus '0x0' in test_gdb.test_pretty_
+// print). The actual stacked register has the correct DwarfRegNum, so map to it.
+// Runs in addPreEmitPass2, after LiveDebugValues has finalized the debug values.
+struct IA64FixupDebugOutRegs : public MachineFunctionPass {
+  static char ID;
+  IA64FixupDebugOutRegs() : MachineFunctionPass(ID) {}
+  StringRef getPassName() const override {
+    return "IA64 debug output-register fixup";
+  }
+  bool runOnMachineFunction(MachineFunction &MF) override {
+    if (!MF.getFunction().getSubprogram())
+      return false; // no debug info -> no debug values to fix
+
+    static const MCPhysReg OutRegs[8] = {
+        IA64::out0, IA64::out1, IA64::out2, IA64::out3,
+        IA64::out4, IA64::out5, IA64::out6, IA64::out7};
+
+    // out_i is the stacked register just above the input+local region the
+    // 'alloc' sized: index (inputs + locals + i). alloc operands are
+    // dst, inputs, locals, outputs, rotating.
+    unsigned Base = 0;
+    bool FoundAlloc = false;
+    for (MachineInstr &MI : MF.front())
+      if (MI.getOpcode() == IA64::ALLOC) {
+        Base = MI.getOperand(1).getImm() + MI.getOperand(2).getImm();
+        FoundAlloc = true;
+        break;
+      }
+    if (!FoundAlloc)
+      return false;
+
+    bool Changed = false;
+    for (MachineBasicBlock &MBB : MF)
+      for (MachineInstr &MI : MBB) {
+        if (!MI.isDebugValue())
+          continue;
+        for (MachineOperand &MO : MI.debug_operands()) {
+          if (!MO.isReg() || !MO.getReg())
+            continue;
+          for (unsigned i = 0; i != 8; ++i)
+            if (MO.getReg() == OutRegs[i] &&
+                Base + i < IA64NumStackedGPRs) {
+              MO.setReg(getIA64StackedGPR(Base + i));
+              Changed = true;
+              break;
+            }
+        }
+      }
+    return Changed;
+  }
+};
+char IA64FixupDebugOutRegs::ID = 0;
+
 class IA64PassConfig : public TargetPassConfig {
 public:
   IA64PassConfig(IA64TargetMachine &TM, PassManagerBase &PM)
@@ -124,6 +185,7 @@ public:
   bool addInstSelector() override;
   void addPreRegAlloc() override;
   void addPreEmitPass() override;
+  void addPreEmitPass2() override;
 };
 } // end anonymous namespace
 
@@ -157,4 +219,10 @@ void IA64PassConfig::addPreRegAlloc() {
 void IA64PassConfig::addPreEmitPass() {
   // Insert stop bits so the assembler can bundle correctly.
   addPass(createIA64BundlingPass());
+}
+
+void IA64PassConfig::addPreEmitPass2() {
+  // Fix up out0-out7 in debug values now that LiveDebugValues has run and the
+  // debug locations are final (see IA64FixupDebugOutRegs).
+  addPass(new IA64FixupDebugOutRegs());
 }

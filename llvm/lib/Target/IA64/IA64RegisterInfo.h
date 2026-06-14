@@ -20,6 +20,15 @@
 
 namespace llvm {
 
+// Number of stacked general registers (r32-r127) the register stack engine
+// manages; 'alloc' carves its inputs/locals/outputs from this window.
+static constexpr unsigned IA64NumStackedGPRs = 96;
+
+// The stacked general register at register-stack index Idx: 0 -> r32, ...,
+// 95 -> r127. The GR enum values are not contiguous (other register classes are
+// interleaved), so this maps an index through an explicit table.
+MCRegister getIA64StackedGPR(unsigned Idx);
+
 struct IA64RegisterInfo : public IA64GenRegisterInfo {
   IA64RegisterInfo();
 

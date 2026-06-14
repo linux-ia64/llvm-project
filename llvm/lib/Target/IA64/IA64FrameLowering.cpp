@@ -12,6 +12,7 @@
 
 #include "IA64FrameLowering.h"
 #include "IA64MachineFunctionInfo.h"
+#include "IA64RegisterInfo.h"
 #include "MCTargetDesc/IA64MCTargetDesc.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -40,27 +41,9 @@ void IA64FrameLowering::emitPrologue(MachineFunction &MF,
 
   // First, handle the 'alloc' instruction, which must be at the top of any
   // function. There are 96 stacked GPRs the RSE worries about.
-  static const unsigned RegsInOrder[96] = {
-      IA64::r32,  IA64::r33,  IA64::r34,  IA64::r35,  IA64::r36,  IA64::r37,
-      IA64::r38,  IA64::r39,  IA64::r40,  IA64::r41,  IA64::r42,  IA64::r43,
-      IA64::r44,  IA64::r45,  IA64::r46,  IA64::r47,  IA64::r48,  IA64::r49,
-      IA64::r50,  IA64::r51,  IA64::r52,  IA64::r53,  IA64::r54,  IA64::r55,
-      IA64::r56,  IA64::r57,  IA64::r58,  IA64::r59,  IA64::r60,  IA64::r61,
-      IA64::r62,  IA64::r63,  IA64::r64,  IA64::r65,  IA64::r66,  IA64::r67,
-      IA64::r68,  IA64::r69,  IA64::r70,  IA64::r71,  IA64::r72,  IA64::r73,
-      IA64::r74,  IA64::r75,  IA64::r76,  IA64::r77,  IA64::r78,  IA64::r79,
-      IA64::r80,  IA64::r81,  IA64::r82,  IA64::r83,  IA64::r84,  IA64::r85,
-      IA64::r86,  IA64::r87,  IA64::r88,  IA64::r89,  IA64::r90,  IA64::r91,
-      IA64::r92,  IA64::r93,  IA64::r94,  IA64::r95,  IA64::r96,  IA64::r97,
-      IA64::r98,  IA64::r99,  IA64::r100, IA64::r101, IA64::r102, IA64::r103,
-      IA64::r104, IA64::r105, IA64::r106, IA64::r107, IA64::r108, IA64::r109,
-      IA64::r110, IA64::r111, IA64::r112, IA64::r113, IA64::r114, IA64::r115,
-      IA64::r116, IA64::r117, IA64::r118, IA64::r119, IA64::r120, IA64::r121,
-      IA64::r122, IA64::r123, IA64::r124, IA64::r125, IA64::r126, IA64::r127};
-
   unsigned NumStackedGPRsUsed = 0;
-  for (int i = 0; i != 96; ++i) {
-    if (MF.getRegInfo().isPhysRegUsed(RegsInOrder[i]))
+  for (unsigned i = 0; i != IA64NumStackedGPRs; ++i) {
+    if (MF.getRegInfo().isPhysRegUsed(getIA64StackedGPR(i)))
       NumStackedGPRsUsed = i + 1; // i+1, not ++ - consider fn(fp, fp, int)
   }
 
@@ -94,8 +77,9 @@ void IA64FrameLowering::emitPrologue(MachineFunction &MF,
   IA64FunctionInfo *FInfo = MF.getInfo<IA64FunctionInfo>();
   Register SavedRPReg;
   if (MFI.hasCalls()) {
-    assert(NumStackedGPRsUsed < 96 && "no free stacked GPR for the rp save");
-    SavedRPReg = RegsInOrder[NumStackedGPRsUsed];
+    assert(NumStackedGPRsUsed < IA64NumStackedGPRs &&
+           "no free stacked GPR for the rp save");
+    SavedRPReg = getIA64StackedGPR(NumStackedGPRsUsed);
     // Reserve it as an extra local in the 'alloc' frame. The output registers
     // (out0-out7) are symbolic and follow the locals, so gas shifts them up by
     // one automatically; the absolutely-named locals below are unaffected.
