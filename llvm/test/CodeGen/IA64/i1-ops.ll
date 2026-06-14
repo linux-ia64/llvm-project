@@ -9,13 +9,17 @@ target triple = "ia64"
 define i1 @and_i1(i1 %a, i1 %b) {
 ; CHECK-LABEL: and_i1#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    and r8 = r32, r33
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp and_i1#
   %r = and i1 %a, %b
   ret i1 %r
 }
@@ -23,13 +27,17 @@ define i1 @and_i1(i1 %a, i1 %b) {
 define i1 @or_i1(i1 %a, i1 %b) {
 ; CHECK-LABEL: or_i1#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    or r8 = r32, r33
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp or_i1#
   %r = or i1 %a, %b
   ret i1 %r
 }
@@ -37,13 +45,17 @@ define i1 @or_i1(i1 %a, i1 %b) {
 define i1 @xor_i1(i1 %a, i1 %b) {
 ; CHECK-LABEL: xor_i1#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    xor r8 = r32, r33
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp xor_i1#
   %r = xor i1 %a, %b
   ret i1 %r
 }
@@ -51,7 +63,10 @@ define i1 @xor_i1(i1 %a, i1 %b) {
 define i1 @not_i1(i1 %a) {
 ; CHECK-LABEL: not_i1#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,1,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    extr.u r8 = r32, 0, 1
 ; CHECK-NEXT:    ;;
@@ -75,6 +90,7 @@ define i1 @not_i1(i1 %a) {
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp not_i1#
   %r = xor i1 %a, true
   ret i1 %r
 }
@@ -82,7 +98,10 @@ define i1 @not_i1(i1 %a) {
 define i1 @cmp_i1_eq(i1 %a, i1 %b) {
 ; CHECK-LABEL: cmp_i1_eq#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    xor r8 = r32, r33
 ; CHECK-NEXT:    ;;
@@ -108,6 +127,7 @@ define i1 @cmp_i1_eq(i1 %a, i1 %b) {
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp cmp_i1_eq#
   %r = icmp eq i1 %a, %b
   ret i1 %r
 }
@@ -115,7 +135,10 @@ define i1 @cmp_i1_eq(i1 %a, i1 %b) {
 define i1 @select_i1(i1 %c, i1 %a, i1 %b) {
 ; CHECK-LABEL: select_i1#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,3,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    extr.u r8 = r33, 0, 1
 ; CHECK-NEXT:    ;;
@@ -143,6 +166,7 @@ define i1 @select_i1(i1 %c, i1 %a, i1 %b) {
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp select_i1#
   %r = select i1 %c, i1 %a, i1 %b
   ret i1 %r
 }

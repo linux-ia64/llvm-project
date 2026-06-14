@@ -10,7 +10,10 @@ target triple = "ia64"
 define i32 @cmp_eq(i64 %a, i64 %b) {
 ; CHECK-LABEL: cmp_eq#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    cmp.eq p6, p0 = r32, r33
 ; CHECK-NEXT:    adds r8 = 0, r0
@@ -19,6 +22,7 @@ define i32 @cmp_eq(i64 %a, i64 %b) {
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp cmp_eq#
   %c = icmp eq i64 %a, %b
   %r = zext i1 %c to i32
   ret i32 %r
@@ -27,7 +31,10 @@ define i32 @cmp_eq(i64 %a, i64 %b) {
 define i32 @cmp_ne(i64 %a, i64 %b) {
 ; CHECK-LABEL: cmp_ne#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    cmp.ne p6, p0 = r32, r33
 ; CHECK-NEXT:    adds r8 = 0, r0
@@ -36,6 +43,7 @@ define i32 @cmp_ne(i64 %a, i64 %b) {
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp cmp_ne#
   %c = icmp ne i64 %a, %b
   %r = zext i1 %c to i32
   ret i32 %r
@@ -44,7 +52,10 @@ define i32 @cmp_ne(i64 %a, i64 %b) {
 define i32 @cmp_slt(i64 %a, i64 %b) {
 ; CHECK-LABEL: cmp_slt#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    cmp.lt p6, p0 = r32, r33
 ; CHECK-NEXT:    adds r8 = 0, r0
@@ -53,6 +64,7 @@ define i32 @cmp_slt(i64 %a, i64 %b) {
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp cmp_slt#
   %c = icmp slt i64 %a, %b
   %r = zext i1 %c to i32
   ret i32 %r
@@ -61,7 +73,10 @@ define i32 @cmp_slt(i64 %a, i64 %b) {
 define i32 @cmp_ult(i64 %a, i64 %b) {
 ; CHECK-LABEL: cmp_ult#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    cmp.ltu p6, p0 = r32, r33
 ; CHECK-NEXT:    adds r8 = 0, r0
@@ -70,6 +85,7 @@ define i32 @cmp_ult(i64 %a, i64 %b) {
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp cmp_ult#
   %c = icmp ult i64 %a, %b
   %r = zext i1 %c to i32
   ret i32 %r
@@ -78,7 +94,10 @@ define i32 @cmp_ult(i64 %a, i64 %b) {
 define i32 @cmp_sgt(i64 %a, i64 %b) {
 ; CHECK-LABEL: cmp_sgt#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    cmp.gt p6, p0 = r32, r33
 ; CHECK-NEXT:    adds r8 = 0, r0
@@ -87,6 +106,7 @@ define i32 @cmp_sgt(i64 %a, i64 %b) {
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp cmp_sgt#
   %c = icmp sgt i64 %a, %b
   %r = zext i1 %c to i32
   ret i32 %r

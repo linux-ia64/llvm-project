@@ -13,7 +13,10 @@ target triple = "ia64"
 define ptr @addr_of_g() {
 ; CHECK-LABEL: addr_of_g#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,0,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    addl r8 = @ltoff(g#), r1
 ; CHECK-NEXT:    ;;
@@ -21,13 +24,17 @@ define ptr @addr_of_g() {
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp addr_of_g#
   ret ptr @g
 }
 
 define i64 @load_g() {
 ; CHECK-LABEL: load_g#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,0,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    addl r8 = @ltoff(g#), r1
 ; CHECK-NEXT:    ;;
@@ -37,6 +44,7 @@ define i64 @load_g() {
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp load_g#
   %v = load i64, ptr @g
   ret i64 %v
 }
@@ -44,7 +52,10 @@ define i64 @load_g() {
 define void @store_g(i64 %v) {
 ; CHECK-LABEL: store_g#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,1,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    addl r8 = @ltoff(g#), r1
 ; CHECK-NEXT:    ;;
@@ -54,6 +65,7 @@ define void @store_g(i64 %v) {
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp store_g#
   store i64 %v, ptr @g
   ret void
 }
@@ -61,7 +73,10 @@ define void @store_g(i64 %v) {
 define ptr @addr_of_elem() {
 ; CHECK-LABEL: addr_of_elem#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,0,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    addl r8 = @ltoff(arr#), r1
 ; CHECK-NEXT:    ;;
@@ -71,5 +86,6 @@ define ptr @addr_of_elem() {
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp addr_of_elem#
   ret ptr getelementptr inbounds ([4 x i64], ptr @arr, i64 0, i64 2)
 }

@@ -12,13 +12,17 @@ target triple = "ia64"
 define i64 @pass_struct(%struct.two %s) {
 ; CHECK-LABEL: pass_struct#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    add r8 = r32, r33
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp pass_struct#
   %a = extractvalue %struct.two %s, 0
   %b = extractvalue %struct.two %s, 1
   %r = add i64 %a, %b
@@ -28,7 +32,10 @@ define i64 @pass_struct(%struct.two %s) {
 define %struct.two @ret_struct(i64 %a, i64 %b) {
 ; CHECK-LABEL: ret_struct#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    mov r9 = r33
 ; CHECK-NEXT:    mov r8 = r32
@@ -36,6 +43,7 @@ define %struct.two @ret_struct(i64 %a, i64 %b) {
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp ret_struct#
   %s0 = insertvalue %struct.two undef, i64 %a, 0
   %s1 = insertvalue %struct.two %s0, i64 %b, 1
   ret %struct.two %s1
@@ -46,8 +54,14 @@ declare i64 @take(%struct.two)
 define i64 @call_struct(i64 %a, i64 %b) {
 ; CHECK-LABEL: call_struct#
 ; CHECK:       // %bb.0:
-; CHECK-NEXT:    alloc r34 = ar.pfs,0,3,2,0
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r34
+; CHECK-NEXT:    alloc r34 = ar.pfs,0,4,2,0
+; CHECK-NEXT:    .save rp, r35
+; CHECK-NEXT:    mov r35 = rp
+; CHECK-NEXT:    .fframe 32
 ; CHECK-NEXT:    add r12 = -32, r12
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    mov out1 = r33
 ; CHECK-NEXT:    mov out0 = r32
@@ -59,9 +73,12 @@ define i64 @call_struct(i64 %a, i64 %b) {
 ; CHECK-NEXT:    mov r1 = r32
 ; CHECK-NEXT:    mov rp = r33
 ; CHECK-NEXT:    mov ar.pfs = r34
-; CHECK-NEXT:    add r12 = 32, r12
 ; CHECK-NEXT:    ;;
+; CHECK-NEXT:    mov rp = r35
+; CHECK-NEXT:    .restore sp
+; CHECK-NEXT:    add r12 = 32, r12
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp call_struct#
   %s0 = insertvalue %struct.two undef, i64 %a, 0
   %s1 = insertvalue %struct.two %s0, i64 %b, 1
   %r = call i64 @take(%struct.two %s1)

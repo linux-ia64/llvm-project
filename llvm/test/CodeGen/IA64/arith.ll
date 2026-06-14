@@ -9,13 +9,17 @@ target triple = "ia64"
 define i64 @add_i64(i64 %a, i64 %b) {
 ; CHECK-LABEL: add_i64#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    add r8 = r32, r33
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp add_i64#
   %r = add i64 %a, %b
   ret i64 %r
 }
@@ -23,13 +27,17 @@ define i64 @add_i64(i64 %a, i64 %b) {
 define i64 @sub_i64(i64 %a, i64 %b) {
 ; CHECK-LABEL: sub_i64#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    sub r8 = r32, r33
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp sub_i64#
   %r = sub i64 %a, %b
   ret i64 %r
 }
@@ -37,13 +45,17 @@ define i64 @sub_i64(i64 %a, i64 %b) {
 define i64 @and_i64(i64 %a, i64 %b) {
 ; CHECK-LABEL: and_i64#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    and r8 = r32, r33
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp and_i64#
   %r = and i64 %a, %b
   ret i64 %r
 }
@@ -51,13 +63,17 @@ define i64 @and_i64(i64 %a, i64 %b) {
 define i64 @or_i64(i64 %a, i64 %b) {
 ; CHECK-LABEL: or_i64#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    or r8 = r32, r33
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp or_i64#
   %r = or i64 %a, %b
   ret i64 %r
 }
@@ -65,13 +81,17 @@ define i64 @or_i64(i64 %a, i64 %b) {
 define i64 @xor_i64(i64 %a, i64 %b) {
 ; CHECK-LABEL: xor_i64#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    xor r8 = r32, r33
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp xor_i64#
   %r = xor i64 %a, %b
   ret i64 %r
 }
@@ -79,13 +99,17 @@ define i64 @xor_i64(i64 %a, i64 %b) {
 define i64 @shl_i64(i64 %a, i64 %b) {
 ; CHECK-LABEL: shl_i64#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    shl r8 = r32, r33
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp shl_i64#
   %r = shl i64 %a, %b
   ret i64 %r
 }
@@ -93,13 +117,17 @@ define i64 @shl_i64(i64 %a, i64 %b) {
 define i64 @lshr_i64(i64 %a, i64 %b) {
 ; CHECK-LABEL: lshr_i64#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    shr.u r8 = r32, r33
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp lshr_i64#
   %r = lshr i64 %a, %b
   ret i64 %r
 }
@@ -107,13 +135,17 @@ define i64 @lshr_i64(i64 %a, i64 %b) {
 define i64 @ashr_i64(i64 %a, i64 %b) {
 ; CHECK-LABEL: ashr_i64#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    shr r8 = r32, r33
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp ashr_i64#
   %r = ashr i64 %a, %b
   ret i64 %r
 }
@@ -121,13 +153,17 @@ define i64 @ashr_i64(i64 %a, i64 %b) {
 define i32 @add_i32(i32 %a, i32 %b) {
 ; CHECK-LABEL: add_i32#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    add r8 = r32, r33
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp add_i32#
   %r = add i32 %a, %b
   ret i32 %r
 }
@@ -135,13 +171,17 @@ define i32 @add_i32(i32 %a, i32 %b) {
 define i32 @sub_i32(i32 %a, i32 %b) {
 ; CHECK-LABEL: sub_i32#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    sub r8 = r32, r33
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp sub_i32#
   %r = sub i32 %a, %b
   ret i32 %r
 }

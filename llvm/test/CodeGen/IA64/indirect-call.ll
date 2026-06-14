@@ -13,8 +13,14 @@ declare void @target()
 define void @call_fp(ptr %fp) {
 ; CHECK-LABEL: call_fp#
 ; CHECK:       // %bb.0:
-; CHECK-NEXT:    alloc r33 = ar.pfs,0,3,0,0
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r33
+; CHECK-NEXT:    alloc r33 = ar.pfs,0,4,0,0
+; CHECK-NEXT:    .save rp, r35
+; CHECK-NEXT:    mov r35 = rp
+; CHECK-NEXT:    .fframe 32
 ; CHECK-NEXT:    add r12 = -32, r12
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    ld8 r3 = [r32]
 ; CHECK-NEXT:    adds r8 = 8, r32
@@ -31,9 +37,12 @@ define void @call_fp(ptr %fp) {
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov rp = r34
 ; CHECK-NEXT:    mov ar.pfs = r33
-; CHECK-NEXT:    add r12 = 32, r12
 ; CHECK-NEXT:    ;;
+; CHECK-NEXT:    mov rp = r35
+; CHECK-NEXT:    .restore sp
+; CHECK-NEXT:    add r12 = 32, r12
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp call_fp#
   call void %fp()
   ret void
 }
@@ -41,8 +50,15 @@ define void @call_fp(ptr %fp) {
 define i64 @call_fp_ret(ptr %fp, i64 %a) {
 ; CHECK-LABEL: call_fp_ret#
 ; CHECK:       // %bb.0:
-; CHECK-NEXT:    alloc r34 = ar.pfs,0,3,1,0
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r34
+; CHECK-NEXT:    alloc r34 = ar.pfs,0,4,1,0
+; CHECK-NEXT:    ;;
+; CHECK-NEXT:    .save rp, r35
+; CHECK-NEXT:    mov r35 = rp
+; CHECK-NEXT:    .fframe 32
 ; CHECK-NEXT:    add r12 = -32, r12
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    mov out0 = r33
 ; CHECK-NEXT:    ld8 r3 = [r32]
@@ -60,9 +76,12 @@ define i64 @call_fp_ret(ptr %fp, i64 %a) {
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov rp = r33
 ; CHECK-NEXT:    mov ar.pfs = r34
-; CHECK-NEXT:    add r12 = 32, r12
 ; CHECK-NEXT:    ;;
+; CHECK-NEXT:    mov rp = r35
+; CHECK-NEXT:    .restore sp
+; CHECK-NEXT:    add r12 = 32, r12
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp call_fp_ret#
   %r = call i64 %fp(i64 %a)
   ret i64 %r
 }
@@ -70,7 +89,10 @@ define i64 @call_fp_ret(ptr %fp, i64 %a) {
 define ptr @func_addr() {
 ; CHECK-LABEL: func_addr#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,0,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    addl r8 = @ltoff(@fptr(target#)), r1
 ; CHECK-NEXT:    ;;
@@ -78,5 +100,6 @@ define ptr @func_addr() {
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp func_addr#
   ret ptr @target
 }

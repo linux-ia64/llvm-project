@@ -16,7 +16,10 @@ target triple = "ia64"
 define ptr @addr_ext() {
 ; STATIC-LABEL: addr_ext#
 ; STATIC:       // %bb.0:
+; STATIC-NEXT:    .prologue
+; STATIC-NEXT:    .save ar.pfs, r3
 ; STATIC-NEXT:    alloc r3 = ar.pfs,0,0,0,0
+; STATIC-NEXT:    .body
 ; STATIC-NEXT:    // PSEUDO_ALLOC
 ; STATIC-NEXT:    addl r8 = @ltoff(@tprel(ext_tls#)), r1
 ; STATIC-NEXT:    ;;
@@ -26,11 +29,18 @@ define ptr @addr_ext() {
 ; STATIC-NEXT:    mov ar.pfs = r3
 ; STATIC-NEXT:    ;;
 ; STATIC-NEXT:    br.ret.sptk.many rp
+; STATIC-NEXT:    .endp addr_ext#
 ;
 ; PIC-LABEL: addr_ext#
 ; PIC:       // %bb.0:
-; PIC-NEXT:    alloc r32 = ar.pfs,0,3,2,0
+; PIC-NEXT:    .prologue
+; PIC-NEXT:    .save ar.pfs, r32
+; PIC-NEXT:    alloc r32 = ar.pfs,0,4,2,0
+; PIC-NEXT:    .save rp, r35
+; PIC-NEXT:    mov r35 = rp
+; PIC-NEXT:    .fframe 32
 ; PIC-NEXT:    add r12 = -32, r12
+; PIC-NEXT:    .body
 ; PIC-NEXT:    // PSEUDO_ALLOC
 ; PIC-NEXT:    addl r3 = @ltoff(@dtpmod(ext_tls#)), r1
 ; PIC-NEXT:    ;;
@@ -46,16 +56,22 @@ define ptr @addr_ext() {
 ; PIC-NEXT:    mov r1 = r33
 ; PIC-NEXT:    mov rp = r34
 ; PIC-NEXT:    mov ar.pfs = r32
-; PIC-NEXT:    add r12 = 32, r12
 ; PIC-NEXT:    ;;
+; PIC-NEXT:    mov rp = r35
+; PIC-NEXT:    .restore sp
+; PIC-NEXT:    add r12 = 32, r12
 ; PIC-NEXT:    br.ret.sptk.many rp
+; PIC-NEXT:    .endp addr_ext#
   ret ptr @ext_tls
 }
 
 define ptr @addr_loc() {
 ; STATIC-LABEL: addr_loc#
 ; STATIC:       // %bb.0:
+; STATIC-NEXT:    .prologue
+; STATIC-NEXT:    .save ar.pfs, r3
 ; STATIC-NEXT:    alloc r3 = ar.pfs,0,0,0,0
+; STATIC-NEXT:    .body
 ; STATIC-NEXT:    // PSEUDO_ALLOC
 ; STATIC-NEXT:    movl r8 = @tprel(loc_tls#)
 ; STATIC-NEXT:    ;;
@@ -63,11 +79,19 @@ define ptr @addr_loc() {
 ; STATIC-NEXT:    mov ar.pfs = r3
 ; STATIC-NEXT:    ;;
 ; STATIC-NEXT:    br.ret.sptk.many rp
+; STATIC-NEXT:    .endp addr_loc#
 ;
 ; PIC-LABEL: addr_loc#
 ; PIC:       // %bb.0:
-; PIC-NEXT:    alloc r32 = ar.pfs,0,3,2,0
+; PIC-NEXT:    .prologue
+; PIC-NEXT:    .save ar.pfs, r32
+; PIC-NEXT:    alloc r32 = ar.pfs,0,4,2,0
+; PIC-NEXT:    ;;
+; PIC-NEXT:    .save rp, r35
+; PIC-NEXT:    mov r35 = rp
+; PIC-NEXT:    .fframe 32
 ; PIC-NEXT:    add r12 = -32, r12
+; PIC-NEXT:    .body
 ; PIC-NEXT:    // PSEUDO_ALLOC
 ; PIC-NEXT:    addl r3 = @ltoff(@dtpmod(loc_tls#)), r1
 ; PIC-NEXT:    ;;
@@ -83,8 +107,11 @@ define ptr @addr_loc() {
 ; PIC-NEXT:    mov r1 = r33
 ; PIC-NEXT:    mov rp = r34
 ; PIC-NEXT:    mov ar.pfs = r32
-; PIC-NEXT:    add r12 = 32, r12
 ; PIC-NEXT:    ;;
+; PIC-NEXT:    mov rp = r35
+; PIC-NEXT:    .restore sp
+; PIC-NEXT:    add r12 = 32, r12
 ; PIC-NEXT:    br.ret.sptk.many rp
+; PIC-NEXT:    .endp addr_loc#
   ret ptr @loc_tls
 }

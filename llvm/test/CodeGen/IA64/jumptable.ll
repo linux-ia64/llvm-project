@@ -11,8 +11,14 @@ declare void @sink(i64)
 define void @jt(i64 %x) {
 ; CHECK-LABEL: jt#
 ; CHECK:       // %bb.0: // %entry
-; CHECK-NEXT:    alloc r33 = ar.pfs,0,3,1,0
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r33
+; CHECK-NEXT:    alloc r33 = ar.pfs,0,4,1,0
+; CHECK-NEXT:    .save rp, r35
+; CHECK-NEXT:    mov r35 = rp
+; CHECK-NEXT:    .fframe 32
 ; CHECK-NEXT:    add r12 = -32, r12
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    adds r3 = 4, r0
 ; CHECK-NEXT:    ;;
@@ -65,9 +71,12 @@ define void @jt(i64 %x) {
 ; CHECK-NEXT:    mov r1 = r32
 ; CHECK-NEXT:    mov rp = r34
 ; CHECK-NEXT:    mov ar.pfs = r33
-; CHECK-NEXT:    add r12 = 32, r12
 ; CHECK-NEXT:    ;;
+; CHECK-NEXT:    mov rp = r35
+; CHECK-NEXT:    .restore sp
+; CHECK-NEXT:    add r12 = 32, r12
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp jt#
 entry:
   switch i64 %x, label %def [
     i64 0, label %c0

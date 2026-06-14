@@ -10,13 +10,17 @@ target triple = "ia64"
 define x86_fp80 @add_f80(x86_fp80 %a, x86_fp80 %b) {
 ; CHECK-LABEL: add_f80#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,0,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    fadd f8 = f8, f9
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp add_f80#
   %r = fadd x86_fp80 %a, %b
   ret x86_fp80 %r
 }
@@ -24,13 +28,17 @@ define x86_fp80 @add_f80(x86_fp80 %a, x86_fp80 %b) {
 define x86_fp80 @load_f80(ptr %p) {
 ; CHECK-LABEL: load_f80#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,1,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    ldfe f8 = [r32]
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp load_f80#
   %v = load x86_fp80, ptr %p
   ret x86_fp80 %v
 }
@@ -38,13 +46,17 @@ define x86_fp80 @load_f80(ptr %p) {
 define void @store_f80(x86_fp80 %v, ptr %p) {
 ; CHECK-LABEL: store_f80#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,3,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    stfe [r34] = f8
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp store_f80#
   store x86_fp80 %v, ptr %p
   ret void
 }
@@ -52,7 +64,10 @@ define void @store_f80(x86_fp80 %v, ptr %p) {
 define x86_fp80 @const_f80() {
 ; CHECK-LABEL: const_f80#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,0,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    addl r8 = @ltoff(.LCPI3_0), r1
 ; CHECK-NEXT:    ;;
@@ -62,5 +77,6 @@ define x86_fp80 @const_f80() {
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp const_f80#
   ret x86_fp80 0xK4000C90FDAA22168C235
 }

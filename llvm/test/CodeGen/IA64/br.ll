@@ -11,8 +11,14 @@ declare void @sink(i64)
 define void @cond_br(i64 %a, i64 %b) {
 ; CHECK-LABEL: cond_br#
 ; CHECK:       // %bb.0: // %entry
-; CHECK-NEXT:    alloc r34 = ar.pfs,0,3,1,0
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r34
+; CHECK-NEXT:    alloc r34 = ar.pfs,0,4,1,0
+; CHECK-NEXT:    .save rp, r35
+; CHECK-NEXT:    mov r35 = rp
+; CHECK-NEXT:    .fframe 32
 ; CHECK-NEXT:    add r12 = -32, r12
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    cmp.ge p6, p0 = r32, r33
 ; CHECK-NEXT:    ;;
@@ -32,9 +38,12 @@ define void @cond_br(i64 %a, i64 %b) {
 ; CHECK-NEXT:    mov r1 = r32
 ; CHECK-NEXT:    mov rp = r33
 ; CHECK-NEXT:    mov ar.pfs = r34
-; CHECK-NEXT:    add r12 = 32, r12
 ; CHECK-NEXT:    ;;
+; CHECK-NEXT:    mov rp = r35
+; CHECK-NEXT:    .restore sp
+; CHECK-NEXT:    add r12 = 32, r12
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp cond_br#
 entry:
   %c = icmp slt i64 %a, %b
   br i1 %c, label %then, label %else
@@ -51,7 +60,10 @@ exit:
 define i64 @loop(i64 %n) {
 ; CHECK-LABEL: loop#
 ; CHECK:       // %bb.0: // %entry
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,1,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    adds r8 = 0, r0
 ; CHECK-NEXT:    ;;
@@ -69,6 +81,7 @@ define i64 @loop(i64 %n) {
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp loop#
 entry:
   br label %head
 head:
@@ -85,8 +98,14 @@ exit:
 define void @indirect_br(ptr %addr) {
 ; CHECK-LABEL: indirect_br#
 ; CHECK:       // %bb.0: // %entry
-; CHECK-NEXT:    alloc r33 = ar.pfs,0,3,1,0
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r33
+; CHECK-NEXT:    alloc r33 = ar.pfs,0,4,1,0
+; CHECK-NEXT:    .save rp, r35
+; CHECK-NEXT:    mov r35 = rp
+; CHECK-NEXT:    .fframe 32
 ; CHECK-NEXT:    add r12 = -32, r12
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    mov b6 = r32
 ; CHECK-NEXT:    ;;
@@ -106,9 +125,12 @@ define void @indirect_br(ptr %addr) {
 ; CHECK-NEXT:    mov r1 = r32
 ; CHECK-NEXT:    mov rp = r34
 ; CHECK-NEXT:    mov ar.pfs = r33
-; CHECK-NEXT:    add r12 = 32, r12
 ; CHECK-NEXT:    ;;
+; CHECK-NEXT:    mov rp = r35
+; CHECK-NEXT:    .restore sp
+; CHECK-NEXT:    add r12 = 32, r12
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp indirect_br#
 entry:
   indirectbr ptr %addr, [ label %a, label %b ]
 a:

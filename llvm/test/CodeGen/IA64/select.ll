@@ -9,7 +9,10 @@ target triple = "ia64"
 define i64 @select_i64(i1 %c, i64 %a, i64 %b) {
 ; CHECK-LABEL: select_i64#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,3,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    mov r8 = r34
 ; CHECK-NEXT:    extr.u r9 = r32, 0, 1
@@ -20,6 +23,7 @@ define i64 @select_i64(i1 %c, i64 %a, i64 %b) {
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp select_i64#
   %r = select i1 %c, i64 %a, i64 %b
   ret i64 %r
 }
@@ -27,7 +31,10 @@ define i64 @select_i64(i1 %c, i64 %a, i64 %b) {
 define i64 @select_cc(i64 %x, i64 %y, i64 %a, i64 %b) {
 ; CHECK-LABEL: select_cc#
 ; CHECK:       // %bb.0:
+; CHECK-NEXT:    .prologue
+; CHECK-NEXT:    .save ar.pfs, r3
 ; CHECK-NEXT:    alloc r3 = ar.pfs,0,4,0,0
+; CHECK-NEXT:    .body
 ; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    mov r8 = r35
 ; CHECK-NEXT:    cmp.lt p6, p0 = r32, r33
@@ -36,6 +43,7 @@ define i64 @select_cc(i64 %x, i64 %y, i64 %a, i64 %b) {
 ; CHECK-NEXT:    mov ar.pfs = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
+; CHECK-NEXT:    .endp select_cc#
   %c = icmp slt i64 %x, %y
   %r = select i1 %c, i64 %a, i64 %b
   ret i64 %r
