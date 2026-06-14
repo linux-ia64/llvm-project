@@ -260,6 +260,18 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::FREM, MVT::f80, Expand);
   setOperationAction(ISD::FDIV, MVT::f80, Expand);
 
+  // FP truncating stores must round first. stfs/stf8 emit fp_fr_to_mem_format,
+  // which *assumes the FR was already rounded* to the destination precision --
+  // they do not round themselves. So storing an unrounded wider value as a
+  // narrower one would just slice its bits and corrupt the result. Expanding
+  // these turns a truncstore into an explicit fpround (FNORMS/FNORMD) followed
+  // by a same-size store of the now-rounded value, and also stops DAGCombiner
+  // from re-merging store(fpround x) back into a single truncating store.
+  // (The load direction needs no dual: ldfs/ldf8 always widen correctly.)
+  setTruncStoreAction(MVT::f64, MVT::f32, Expand);
+  setTruncStoreAction(MVT::f80, MVT::f32, Expand);
+  setTruncStoreAction(MVT::f80, MVT::f64, Expand);
+
   // We don't support sin/cos/sqrt/pow (expand to libcalls: sinl/cosl/sqrtl/...).
   for (MVT VT : {MVT::f32, MVT::f64, MVT::f80}) {
     setOperationAction(ISD::FSIN, VT, Expand);

@@ -411,8 +411,9 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
       case MVT::i8:  Opc = IA64::ST1;  break;
       case MVT::i16: Opc = IA64::ST2;  break;
       case MVT::i32: Opc = IA64::ST4;  break;
-      case MVT::f32: Opc = IA64::STF4; break;
-      case MVT::f64: Opc = IA64::STF8; break;
+      // NB: FP truncating stores are set to Expand in IA64TargetLowering --
+      // stfs/stf8 do not round, so they must become an explicit fpround
+      // (FNORMS/FNORMD) plus a same-size store before reaching the selector.
       default:
         report_fatal_error("IA64: cannot select a truncating store of this type");
       }
