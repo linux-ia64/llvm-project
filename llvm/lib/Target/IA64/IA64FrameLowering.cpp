@@ -77,8 +77,12 @@ void IA64FrameLowering::emitPrologue(MachineFunction &MF,
   IA64FunctionInfo *FInfo = MF.getInfo<IA64FunctionInfo>();
   Register SavedRPReg;
   if (MFI.hasCalls()) {
-    assert(NumStackedGPRsUsed < IA64NumStackedGPRs &&
-           "no free stacked GPR for the rp save");
+    // The rp save becomes one more local; the outputs (out0-out7) are placed
+    // by gas above the locals. The whole frame -- locals + rp save + outputs --
+    // must fit in the 96-register window, which getReservedRegs guarantees by
+    // capping the locals (it reserves the top 9 stacked GPRs).
+    assert(NumStackedGPRsUsed + NumOutRegsUsed < IA64NumStackedGPRs &&
+           "stacked-GPR frame overflow: locals + rp save + outputs > 96");
     SavedRPReg = getIA64StackedGPR(NumStackedGPRsUsed);
     // Reserve it as an extra local in the 'alloc' frame. The output registers
     // (out0-out7) are symbolic and follow the locals, so gas shifts them up by

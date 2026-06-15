@@ -114,9 +114,9 @@ BitVector IA64RegisterInfo::getReservedRegs(const MachineFunction &MF) const {
 
   // Cap the stacked-GPR register frame. 'alloc' carves a frame of
   // (locals + outputs) stacked registers out of r32-r127, and the architecture
-  // limits that frame to 96 registers. Reserving the last 8 general registers
-  // allow them to become output registers (out0-out7) in case of register
-  // pressure.
+  // limits that frame to 96 registers.
+  // Reserve last 8 + 1 registers for out0-out7 + saved return pointer.
+  Reserved.set(IA64::r119);
   Reserved.set(IA64::r120);
   Reserved.set(IA64::r121);
   Reserved.set(IA64::r122);
