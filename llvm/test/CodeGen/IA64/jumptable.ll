@@ -12,14 +12,13 @@ define void @jt(i64 %x) {
 ; CHECK-LABEL: jt#
 ; CHECK:       // %bb.0: // %entry
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r33
-; CHECK-NEXT:    alloc r33 = ar.pfs,0,4,1,0
+; CHECK-NEXT:    .save ar.pfs, r34
+; CHECK-NEXT:    alloc r34 = ar.pfs,0,4,1,0
 ; CHECK-NEXT:    .save rp, r35
 ; CHECK-NEXT:    mov r35 = rp
 ; CHECK-NEXT:    .fframe 32
 ; CHECK-NEXT:    add r12 = -32, r12
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    adds r3 = 4, r0
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    cmp.gtu p6, p0 = r32, r3
@@ -64,17 +63,18 @@ define void @jt(i64 %x) {
 ; CHECK-NEXT:    adds out0 = 99, r0
 ; CHECK-NEXT:  .LBB0_3: // %c0
 ; CHECK-NEXT:    mov r32 = r1
-; CHECK-NEXT:    mov r34 = rp
+; CHECK-NEXT:    mov r33 = rp
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.call.sptk rp = sink#
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov r1 = r32
-; CHECK-NEXT:    mov rp = r34
-; CHECK-NEXT:    mov ar.pfs = r33
+; CHECK-NEXT:    mov rp = r33
+; CHECK-NEXT:    mov ar.pfs = r34
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov rp = r35
 ; CHECK-NEXT:    .restore sp
 ; CHECK-NEXT:    add r12 = 32, r12
+; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp jt#
 entry:

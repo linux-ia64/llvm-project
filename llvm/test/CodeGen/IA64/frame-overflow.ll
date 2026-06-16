@@ -2,16 +2,17 @@
 
 ; Regression test for stacked-GPR frame overflow under high register
 ; pressure. The 'alloc' frame is (locals + outputs) and must be <= 96
-; stacked GPRs. A non-leaf function parks the return pointer (rp) in one
-; extra local, and gas places the outgoing-argument registers out0-out7
-; immediately above the locals -- so locals + 1 (rp) + 8 (outputs) must
-; fit in 96, i.e. the allocator may use at most 87 stacked locals.
+; stacked GPRs. A non-leaf function parks both the caller's ar.pfs and the
+; return pointer (rp) in one extra local each, and gas places the
+; outgoing-argument registers out0-out7 immediately above the locals -- so
+; locals + 1 (ar.pfs) + 1 (rp) + 8 (outputs) must fit in 96, i.e. the
+; allocator may use at most 86 stacked locals.
 ;
-; Earlier the backend reserved only the top 8 GPRs (r120-r127), capping
-; locals at 88; with the rp save that produced 'alloc ...,0,89,8,0' (frame
-; 97) and pushed out7 onto the nonexistent r128, which GNU as rejected
-; with "Size of frame exceeds maximum of 96 registers". Reserving r119
-; too caps locals at 87, so the worst case 87 + 1 + 8 = 96 fits.
+; getReservedRegs caps this by reserving the top 10 stacked GPRs (r118-r127):
+; the 8 outputs plus the rp save (r119) plus the ar.pfs save (r118). The worst
+; case 86 + 1 + 1 + 8 = 96 then exactly fits; one more local would push out7
+; onto the nonexistent r128, which GNU as rejects with "Size of frame exceeds
+; maximum of 96 registers".
 ;
 ; The ~120 volatile loads below are all live across the 8-argument call, so
 ; they must occupy callee-preserved stacked locals (scratch GRs do not
@@ -25,9 +26,11 @@ target triple = "ia64"
 declare i64 @sink8(i64, i64, i64, i64, i64, i64, i64, i64)
 
 ; CHECK-LABEL: pressure#:
-; The alloc frame must be locals=88, outputs=8 (was 89,8 = frame 97), and the
-; return-pointer save must land on r119 (was r120 before the fix). 'alloc' is
-; emitted before the '.save rp' directive, so the checks are in that order.
+; The alloc frame must be locals=88, outputs=8: 86 allocator locals + the
+; ar.pfs save (r118) + the rp save (r119). 'alloc' is preceded by its
+; '.save ar.pfs' directive and followed by '.save rp', so the checks are in
+; that order.
+; CHECK: .save{{.*}}ar.pfs, r118
 ; CHECK: alloc r{{[0-9]+}} = ar.pfs,0,88,8,0
 ; CHECK: .save{{.*}}rp, r119
 

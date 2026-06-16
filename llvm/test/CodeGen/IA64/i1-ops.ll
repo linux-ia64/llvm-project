@@ -10,13 +10,12 @@ define i1 @and_i1(i1 %a, i1 %b) {
 ; CHECK-LABEL: and_i1#
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r3
-; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .save ar.pfs, r34
+; CHECK-NEXT:    alloc r34 = ar.pfs,0,3,0,0
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    and r8 = r32, r33
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    mov ar.pfs = r3
+; CHECK-NEXT:    mov ar.pfs = r34
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp and_i1#
@@ -28,13 +27,12 @@ define i1 @or_i1(i1 %a, i1 %b) {
 ; CHECK-LABEL: or_i1#
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r3
-; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .save ar.pfs, r34
+; CHECK-NEXT:    alloc r34 = ar.pfs,0,3,0,0
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    or r8 = r32, r33
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    mov ar.pfs = r3
+; CHECK-NEXT:    mov ar.pfs = r34
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp or_i1#
@@ -46,13 +44,12 @@ define i1 @xor_i1(i1 %a, i1 %b) {
 ; CHECK-LABEL: xor_i1#
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r3
-; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .save ar.pfs, r34
+; CHECK-NEXT:    alloc r34 = ar.pfs,0,3,0,0
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    xor r8 = r32, r33
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    mov ar.pfs = r3
+; CHECK-NEXT:    mov ar.pfs = r34
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp xor_i1#
@@ -64,13 +61,12 @@ define i1 @not_i1(i1 %a) {
 ; CHECK-LABEL: not_i1#
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r3
-; CHECK-NEXT:    alloc r3 = ar.pfs,0,1,0,0
+; CHECK-NEXT:    .save ar.pfs, r33
+; CHECK-NEXT:    alloc r33 = ar.pfs,0,2,0,0
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
-; CHECK-NEXT:    extr.u r8 = r32, 0, 1
+; CHECK-NEXT:    extr.u r3 = r32, 0, 1
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    cmp.ne p6, p0 = r8, r0
+; CHECK-NEXT:    cmp.ne p6, p0 = r3, r0
 ; CHECK-NEXT:    cmp.eq p7, p0 = r0, r0
 ; CHECK-NEXT:    cmp.ne p8, p0 = r0, r0
 ; CHECK-NEXT:    ;;
@@ -87,7 +83,7 @@ define i1 @not_i1(i1 %a) {
 ; CHECK-NEXT:    adds r8 = 0, r0
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    (p8) adds r8 = 1, r8
-; CHECK-NEXT:    mov ar.pfs = r3
+; CHECK-NEXT:    mov ar.pfs = r33
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp not_i1#
@@ -99,15 +95,14 @@ define i1 @cmp_i1_eq(i1 %a, i1 %b) {
 ; CHECK-LABEL: cmp_i1_eq#
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r3
-; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .save ar.pfs, r34
+; CHECK-NEXT:    alloc r34 = ar.pfs,0,3,0,0
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
-; CHECK-NEXT:    xor r8 = r32, r33
+; CHECK-NEXT:    xor r3 = r32, r33
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    extr.u r8 = r8, 0, 1
+; CHECK-NEXT:    extr.u r3 = r3, 0, 1
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    cmp.ne p6, p0 = r8, r0
+; CHECK-NEXT:    cmp.ne p6, p0 = r3, r0
 ; CHECK-NEXT:    cmp.eq p7, p0 = r0, r0
 ; CHECK-NEXT:    cmp.ne p8, p0 = r0, r0
 ; CHECK-NEXT:    ;;
@@ -124,7 +119,7 @@ define i1 @cmp_i1_eq(i1 %a, i1 %b) {
 ; CHECK-NEXT:    adds r8 = 0, r0
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    (p8) adds r8 = 1, r8
-; CHECK-NEXT:    mov ar.pfs = r3
+; CHECK-NEXT:    mov ar.pfs = r34
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp cmp_i1_eq#
@@ -136,34 +131,33 @@ define i1 @select_i1(i1 %c, i1 %a, i1 %b) {
 ; CHECK-LABEL: select_i1#
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r3
-; CHECK-NEXT:    alloc r3 = ar.pfs,0,3,0,0
+; CHECK-NEXT:    .save ar.pfs, r35
+; CHECK-NEXT:    alloc r35 = ar.pfs,0,4,0,0
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
-; CHECK-NEXT:    extr.u r8 = r33, 0, 1
+; CHECK-NEXT:    extr.u r3 = r33, 0, 1
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    cmp.ne p6, p0 = r8, r0
+; CHECK-NEXT:    cmp.ne p6, p0 = r3, r0
 ; CHECK-NEXT:    adds r8 = 0, r0
 ; CHECK-NEXT:    ;;
+; CHECK-NEXT:    mov r3 = r8
+; CHECK-NEXT:    ;;
+; CHECK-NEXT:    (p6) adds r3 = 1, r3
+; CHECK-NEXT:    extr.u r9 = r34, 0, 1
+; CHECK-NEXT:    ;;
+; CHECK-NEXT:    cmp.ne p6, p0 = r9, r0
 ; CHECK-NEXT:    mov r9 = r8
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    (p6) adds r9 = 1, r9
-; CHECK-NEXT:    extr.u r10 = r34, 0, 1
+; CHECK-NEXT:    extr.u r10 = r32, 0, 1
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    cmp.ne p6, p0 = r10, r0
-; CHECK-NEXT:    mov r10 = r8
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    (p6) adds r10 = 1, r10
-; CHECK-NEXT:    extr.u r11 = r32, 0, 1
+; CHECK-NEXT:    (p6) mov r9 = r3
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    cmp.ne p6, p0 = r11, r0
-; CHECK-NEXT:    ;;
-; CHECK-NEXT:    (p6) mov r10 = r9
-; CHECK-NEXT:    ;;
-; CHECK-NEXT:    cmp.ne p6, p0 = r10, r0
+; CHECK-NEXT:    cmp.ne p6, p0 = r9, r0
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    (p6) adds r8 = 1, r8
-; CHECK-NEXT:    mov ar.pfs = r3
+; CHECK-NEXT:    mov ar.pfs = r35
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp select_i1#

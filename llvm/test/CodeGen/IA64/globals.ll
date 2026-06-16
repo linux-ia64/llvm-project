@@ -14,14 +14,13 @@ define ptr @addr_of_g() {
 ; CHECK-LABEL: addr_of_g#
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r3
-; CHECK-NEXT:    alloc r3 = ar.pfs,0,0,0,0
+; CHECK-NEXT:    .save ar.pfs, r32
+; CHECK-NEXT:    alloc r32 = ar.pfs,0,1,0,0
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
-; CHECK-NEXT:    addl r8 = @ltoff(g#), r1
+; CHECK-NEXT:    addl r3 = @ltoff(g#), r1
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    ld8 r8 = [r8]
-; CHECK-NEXT:    mov ar.pfs = r3
+; CHECK-NEXT:    ld8 r8 = [r3]
+; CHECK-NEXT:    mov ar.pfs = r32
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp addr_of_g#
@@ -32,16 +31,15 @@ define i64 @load_g() {
 ; CHECK-LABEL: load_g#
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r3
-; CHECK-NEXT:    alloc r3 = ar.pfs,0,0,0,0
+; CHECK-NEXT:    .save ar.pfs, r32
+; CHECK-NEXT:    alloc r32 = ar.pfs,0,1,0,0
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
-; CHECK-NEXT:    addl r8 = @ltoff(g#), r1
+; CHECK-NEXT:    addl r3 = @ltoff(g#), r1
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    ld8 r8 = [r8]
+; CHECK-NEXT:    ld8 r3 = [r3]
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    ld8 r8 = [r8]
-; CHECK-NEXT:    mov ar.pfs = r3
+; CHECK-NEXT:    ld8 r8 = [r3]
+; CHECK-NEXT:    mov ar.pfs = r32
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp load_g#
@@ -53,16 +51,15 @@ define void @store_g(i64 %v) {
 ; CHECK-LABEL: store_g#
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r3
-; CHECK-NEXT:    alloc r3 = ar.pfs,0,1,0,0
+; CHECK-NEXT:    .save ar.pfs, r33
+; CHECK-NEXT:    alloc r33 = ar.pfs,0,2,0,0
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
-; CHECK-NEXT:    addl r8 = @ltoff(g#), r1
+; CHECK-NEXT:    addl r3 = @ltoff(g#), r1
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    ld8 r8 = [r8]
+; CHECK-NEXT:    ld8 r3 = [r3]
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    st8 [r8] = r32
-; CHECK-NEXT:    mov ar.pfs = r3
+; CHECK-NEXT:    st8 [r3] = r32
+; CHECK-NEXT:    mov ar.pfs = r33
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp store_g#
@@ -74,16 +71,15 @@ define ptr @addr_of_elem() {
 ; CHECK-LABEL: addr_of_elem#
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r3
-; CHECK-NEXT:    alloc r3 = ar.pfs,0,0,0,0
+; CHECK-NEXT:    .save ar.pfs, r32
+; CHECK-NEXT:    alloc r32 = ar.pfs,0,1,0,0
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
-; CHECK-NEXT:    addl r8 = @ltoff(arr#), r1
+; CHECK-NEXT:    addl r3 = @ltoff(arr#), r1
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    ld8 r8 = [r8]
+; CHECK-NEXT:    ld8 r3 = [r3]
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    adds r8 = 16, r8
-; CHECK-NEXT:    mov ar.pfs = r3
+; CHECK-NEXT:    adds r8 = 16, r3
+; CHECK-NEXT:    mov ar.pfs = r32
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp addr_of_elem#

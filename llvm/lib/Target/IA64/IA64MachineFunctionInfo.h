@@ -20,12 +20,13 @@ namespace llvm {
 class IA64FunctionInfo : public MachineFunctionInfo {
   virtual void anchor();
 
-  // The virtual register that receives ar.pfs at function entry (via the
-  // PSEUDO_ALLOC). LowerFormalArguments creates it; LowerReturn copies it back
-  // into ar.pfs before the return. In the pre-removal backend this lived as a
-  // mutable member of IA64TargetLowering, which is unsafe now that lowering is
-  // a shared const per-target object, so it belongs here, per-function.
-  Register VirtGPR;
+  // The stacked local that emitPrologue makes 'alloc' write the incoming ar.pfs
+  // into, and that emitEpilogue restores ar.pfs from before the return. Like
+  // SavedRPReg below it is picked just above the locals the allocator used (so
+  // the register stack engine preserves it across calls and it is never spilled)
+  // and reserved by widening the 'alloc' frame. This gives the unwinder one
+  // fixed location to name in a '.save ar.pfs, <reg>' directive.
+  Register SavedPFSReg;
 
   // FrameIndex of the varargs register save area: the slot holding the first
   // variadic argument. LowerFormalArguments spills the unnamed incoming GP
@@ -49,8 +50,8 @@ public:
 
   IA64FunctionInfo(const Function &F, const TargetSubtargetInfo *STI) {}
 
-  Register getVirtGPR() const { return VirtGPR; }
-  void setVirtGPR(Register Reg) { VirtGPR = Reg; }
+  Register getSavedPFSReg() const { return SavedPFSReg; }
+  void setSavedPFSReg(Register Reg) { SavedPFSReg = Reg; }
 
   int getVarArgsFrameIndex() const { return VarArgsFrameIndex; }
   void setVarArgsFrameIndex(int FI) { VarArgsFrameIndex = FI; }

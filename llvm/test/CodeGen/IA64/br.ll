@@ -19,7 +19,6 @@ define void @cond_br(i64 %a, i64 %b) {
 ; CHECK-NEXT:    .fframe 32
 ; CHECK-NEXT:    add r12 = -32, r12
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    cmp.ge p6, p0 = r32, r33
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    (p6) brl.cond.sptk .LBB0_2
@@ -42,6 +41,7 @@ define void @cond_br(i64 %a, i64 %b) {
 ; CHECK-NEXT:    mov rp = r35
 ; CHECK-NEXT:    .restore sp
 ; CHECK-NEXT:    add r12 = 32, r12
+; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp cond_br#
 entry:
@@ -61,24 +61,23 @@ define i64 @loop(i64 %n) {
 ; CHECK-LABEL: loop#
 ; CHECK:       // %bb.0: // %entry
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r3
-; CHECK-NEXT:    alloc r3 = ar.pfs,0,1,0,0
+; CHECK-NEXT:    .save ar.pfs, r33
+; CHECK-NEXT:    alloc r33 = ar.pfs,0,2,0,0
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    adds r8 = 0, r0
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    mov r9 = r8
+; CHECK-NEXT:    mov r3 = r8
 ; CHECK-NEXT:  .LBB1_1: // %head
 ; CHECK-NEXT:    // =>This Inner Loop Header: Depth=1
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    add r8 = r8, r9
-; CHECK-NEXT:    adds r9 = 1, r9
+; CHECK-NEXT:    add r8 = r8, r3
+; CHECK-NEXT:    adds r3 = 1, r3
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    cmp.lt p6, p0 = r9, r32
+; CHECK-NEXT:    cmp.lt p6, p0 = r3, r32
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    (p6) brl.cond.sptk .LBB1_1
 ; CHECK-NEXT:  // %bb.2: // %exit
-; CHECK-NEXT:    mov ar.pfs = r3
+; CHECK-NEXT:    mov ar.pfs = r33
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp loop#
@@ -99,14 +98,13 @@ define void @indirect_br(ptr %addr) {
 ; CHECK-LABEL: indirect_br#
 ; CHECK:       // %bb.0: // %entry
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r33
-; CHECK-NEXT:    alloc r33 = ar.pfs,0,4,1,0
+; CHECK-NEXT:    .save ar.pfs, r34
+; CHECK-NEXT:    alloc r34 = ar.pfs,0,4,1,0
 ; CHECK-NEXT:    .save rp, r35
 ; CHECK-NEXT:    mov r35 = rp
 ; CHECK-NEXT:    .fframe 32
 ; CHECK-NEXT:    add r12 = -32, r12
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    mov b6 = r32
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    (p0) br.cond.sptk b6
@@ -118,17 +116,18 @@ define void @indirect_br(ptr %addr) {
 ; CHECK-NEXT:    adds out0 = 20, r0
 ; CHECK-NEXT:  .LBB2_2: // %a
 ; CHECK-NEXT:    mov r32 = r1
-; CHECK-NEXT:    mov r34 = rp
+; CHECK-NEXT:    mov r33 = rp
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.call.sptk rp = sink#
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov r1 = r32
-; CHECK-NEXT:    mov rp = r34
-; CHECK-NEXT:    mov ar.pfs = r33
+; CHECK-NEXT:    mov rp = r33
+; CHECK-NEXT:    mov ar.pfs = r34
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov rp = r35
 ; CHECK-NEXT:    .restore sp
 ; CHECK-NEXT:    add r12 = 32, r12
+; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp indirect_br#
 entry:

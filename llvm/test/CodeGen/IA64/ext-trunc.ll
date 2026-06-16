@@ -11,13 +11,12 @@ define i64 @sext_i32_i64(i32 %a) {
 ; CHECK-LABEL: sext_i32_i64#
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r3
-; CHECK-NEXT:    alloc r3 = ar.pfs,0,1,0,0
+; CHECK-NEXT:    .save ar.pfs, r33
+; CHECK-NEXT:    alloc r33 = ar.pfs,0,2,0,0
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    sxt4 r8 = r32
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    mov ar.pfs = r3
+; CHECK-NEXT:    mov ar.pfs = r33
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp sext_i32_i64#
@@ -29,13 +28,12 @@ define i64 @zext_i32_i64(i32 %a) {
 ; CHECK-LABEL: zext_i32_i64#
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r3
-; CHECK-NEXT:    alloc r3 = ar.pfs,0,1,0,0
+; CHECK-NEXT:    .save ar.pfs, r33
+; CHECK-NEXT:    alloc r33 = ar.pfs,0,2,0,0
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    zxt4 r8 = r32
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    mov ar.pfs = r3
+; CHECK-NEXT:    mov ar.pfs = r33
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp zext_i32_i64#
@@ -47,13 +45,12 @@ define i64 @sext_i16_i64(i16 %a) {
 ; CHECK-LABEL: sext_i16_i64#
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r3
-; CHECK-NEXT:    alloc r3 = ar.pfs,0,1,0,0
+; CHECK-NEXT:    .save ar.pfs, r33
+; CHECK-NEXT:    alloc r33 = ar.pfs,0,2,0,0
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    sxt2 r8 = r32
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    mov ar.pfs = r3
+; CHECK-NEXT:    mov ar.pfs = r33
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp sext_i16_i64#
@@ -65,13 +62,12 @@ define i64 @zext_i8_i64(i8 %a) {
 ; CHECK-LABEL: zext_i8_i64#
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r3
-; CHECK-NEXT:    alloc r3 = ar.pfs,0,1,0,0
+; CHECK-NEXT:    .save ar.pfs, r33
+; CHECK-NEXT:    alloc r33 = ar.pfs,0,2,0,0
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    zxt1 r8 = r32
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    mov ar.pfs = r3
+; CHECK-NEXT:    mov ar.pfs = r33
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp zext_i8_i64#
@@ -83,13 +79,12 @@ define i32 @trunc_i64_i32(i64 %a) {
 ; CHECK-LABEL: trunc_i64_i32#
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r3
-; CHECK-NEXT:    alloc r3 = ar.pfs,0,1,0,0
+; CHECK-NEXT:    .save ar.pfs, r33
+; CHECK-NEXT:    alloc r33 = ar.pfs,0,2,0,0
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    mov r8 = r32
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    mov ar.pfs = r3
+; CHECK-NEXT:    mov ar.pfs = r33
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp trunc_i64_i32#
@@ -101,14 +96,13 @@ define i64 @zext_i1_i64(i1 %a) {
 ; CHECK-LABEL: zext_i1_i64#
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r3
-; CHECK-NEXT:    alloc r3 = ar.pfs,0,1,0,0
+; CHECK-NEXT:    .save ar.pfs, r33
+; CHECK-NEXT:    alloc r33 = ar.pfs,0,2,0,0
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
-; CHECK-NEXT:    adds r8 = 1, r0
+; CHECK-NEXT:    adds r3 = 1, r0
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    and r8 = r32, r8
-; CHECK-NEXT:    mov ar.pfs = r3
+; CHECK-NEXT:    and r8 = r32, r3
+; CHECK-NEXT:    mov ar.pfs = r33
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp zext_i1_i64#
@@ -120,17 +114,16 @@ define i64 @sext_i1_i64(i1 %a) {
 ; CHECK-LABEL: sext_i1_i64#
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r3
-; CHECK-NEXT:    alloc r3 = ar.pfs,0,1,0,0
+; CHECK-NEXT:    .save ar.pfs, r33
+; CHECK-NEXT:    alloc r33 = ar.pfs,0,2,0,0
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
-; CHECK-NEXT:    adds r8 = 1, r0
+; CHECK-NEXT:    adds r3 = 1, r0
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    and r8 = r32, r8
-; CHECK-NEXT:    adds r9 = 0, r0
+; CHECK-NEXT:    and r3 = r32, r3
+; CHECK-NEXT:    adds r8 = 0, r0
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    sub r8 = r9, r8
-; CHECK-NEXT:    mov ar.pfs = r3
+; CHECK-NEXT:    sub r8 = r8, r3
+; CHECK-NEXT:    mov ar.pfs = r33
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp sext_i1_i64#

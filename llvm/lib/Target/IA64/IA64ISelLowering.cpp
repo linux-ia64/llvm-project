@@ -404,15 +404,6 @@ SDValue IA64TargetLowering::LowerFormalArguments(
   CCState CCInfo(CallConv, isVarArg, MF, ArgLocs, *DAG.getContext());
   CCInfo.AnalyzeFormalArguments(Ins, CC_IA64);
 
-  // The physical registers the incoming arguments arrive in. The PSEUDO_ALLOC
-  // below is made to "use" these (with an early-clobber result), so the register
-  // allocator cannot place the ar.pfs save into a live argument register --
-  // 'alloc' reconfigures the frame those registers occupy, and its destination
-  // must not alias one of them. Without this, the coalescer can shorten an arg's
-  // live range to end before the PSEUDO_ALLOC, letting ar.pfs reuse e.g. r32 and
-  // clobber the incoming argument.
-  SmallVector<Register, 8> ArgPhysRegs;
-
   for (CCValAssign &VA : ArgLocs) {
     if (VA.isRegLoc()) {
       // The argument arrives in a register.
@@ -427,8 +418,6 @@ SDValue IA64TargetLowering::LowerFormalArguments(
 
       Register VReg = RegInfo.createVirtualRegister(RC);
       RegInfo.addLiveIn(VA.getLocReg(), VReg);
-      if (Ins[VA.getValNo()].Used)
-        ArgPhysRegs.push_back(VA.getLocReg());
       SDValue ArgValue = DAG.getCopyFromReg(Chain, dl, VReg, RegVT);
 
       // If the argument was widened to fill the register, narrow it back to
@@ -486,10 +475,6 @@ SDValue IA64TargetLowering::LowerFormalArguments(
         VAFI = FI; // va_start points at the first unnamed slot's home
       Register VReg = RegInfo.createVirtualRegister(&IA64::GRRegClass);
       RegInfo.addLiveIn(ArgGPRs[i], VReg);
-      // Protect this incoming register from the ar.pfs save: the 'alloc' that
-      // defines it runs before these spills, so it must not land on r32-r39
-      // (see ArgPhysRegs / PSEUDO_ALLOC below).
-      ArgPhysRegs.push_back(ArgGPRs[i]);
       SDValue Val = DAG.getCopyFromReg(Chain, dl, VReg, MVT::i64);
       SDValue Addr = DAG.getFrameIndex(FI, MVT::i64);
       Stores.push_back(DAG.getStore(Val.getValue(1), dl, Val, Addr,
@@ -510,22 +495,9 @@ SDValue IA64TargetLowering::LowerFormalArguments(
       Chain = DAG.getNode(ISD::TokenFactor, dl, MVT::Other, Stores);
   }
 
-  // Materialise the PSEUDO_ALLOC at function entry. Frame lowering later scans
-  // for it to size and place the real 'alloc'; LowerReturn reads the captured
-  // vreg to restore ar.pfs before the branch. The result is marked early-clobber
-  // and the instruction is given the incoming argument registers as implicit
-  // uses, so the allocator keeps the ar.pfs save off any live argument register
-  // (see ArgPhysRegs above).
-  const TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();
-  Register VirtGPR = RegInfo.createVirtualRegister(&IA64::GRRegClass);
-  MachineBasicBlock &EntryBB = MF.front();
-  MachineInstrBuilder MIB =
-      BuildMI(EntryBB, EntryBB.begin(), DebugLoc(), TII.get(IA64::PSEUDO_ALLOC))
-          .addReg(VirtGPR, RegState::Define | RegState::EarlyClobber);
-  for (Register ArgReg : ArgPhysRegs)
-    MIB.addReg(ArgReg, RegState::Implicit);
-  MF.getInfo<IA64FunctionInfo>()->setVirtGPR(VirtGPR);
-
+  // 'alloc' (which captures the caller's ar.pfs) and its restore are now emitted
+  // entirely by frame lowering into a reserved stacked local, so there is
+  // nothing to materialise here. See IA64FrameLowering::emitPrologue.
   return Chain;
 }
 
@@ -1021,11 +993,6 @@ SDValue IA64TargetLowering::LowerReturn(
   CCState CCInfo(CallConv, isVarArg, MF, RVLocs, *DAG.getContext());
   CCInfo.AnalyzeReturn(Outs, RetCC_IA64);
 
-  // Read back the ar.pfs value saved into a vreg at function entry.
-  Register VirtGPR = MF.getInfo<IA64FunctionInfo>()->getVirtGPR();
-  SDValue ARPFS = DAG.getCopyFromReg(Chain, dl, VirtGPR, MVT::i64);
-  Chain = ARPFS.getValue(1);
-
   SDValue Glue;
   SmallVector<SDValue, 4> RetOps(1, Chain); // RetOps[0] is patched below.
 
@@ -1046,14 +1013,6 @@ SDValue IA64TargetLowering::LowerReturn(
     Glue = Chain.getValue(1);
     RetOps.push_back(DAG.getRegister(VA.getLocReg(), VA.getLocVT()));
   }
-
-  // Restore ar.pfs immediately before the return, glued into it. Like the
-  // return-value registers above, ar.pfs must also be added to RetOps so the
-  // (SDNPVariadic) RET node carries it as an implicit use; otherwise the copy
-  // — and the PSEUDO_ALLOC feeding it — are eliminated as dead.
-  Chain = DAG.getCopyToReg(Chain, dl, IA64::AR_PFS, ARPFS, Glue);
-  Glue = Chain.getValue(1);
-  RetOps.push_back(DAG.getRegister(IA64::AR_PFS, MVT::i64));
 
   RetOps[0] = Chain;
   if (Glue.getNode())

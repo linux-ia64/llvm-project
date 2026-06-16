@@ -18,7 +18,6 @@ define i64 @sdiv_i64(i64 %a, i64 %b) {
 ; CHECK-NEXT:    .fframe 32
 ; CHECK-NEXT:    add r12 = -32, r12
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    mov out1 = r33
 ; CHECK-NEXT:    mov out0 = r32
 ; CHECK-NEXT:    mov r32 = r1
@@ -33,6 +32,7 @@ define i64 @sdiv_i64(i64 %a, i64 %b) {
 ; CHECK-NEXT:    mov rp = r35
 ; CHECK-NEXT:    .restore sp
 ; CHECK-NEXT:    add r12 = 32, r12
+; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp sdiv_i64#
   %r = sdiv i64 %a, %b
@@ -45,13 +45,11 @@ define i64 @udiv_i64(i64 %a, i64 %b) {
 ; CHECK-NEXT:    .prologue
 ; CHECK-NEXT:    .save ar.pfs, r34
 ; CHECK-NEXT:    alloc r34 = ar.pfs,0,4,2,0
-; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    .save rp, r35
 ; CHECK-NEXT:    mov r35 = rp
 ; CHECK-NEXT:    .fframe 32
 ; CHECK-NEXT:    add r12 = -32, r12
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    mov out1 = r33
 ; CHECK-NEXT:    mov out0 = r32
 ; CHECK-NEXT:    mov r32 = r1
@@ -66,6 +64,7 @@ define i64 @udiv_i64(i64 %a, i64 %b) {
 ; CHECK-NEXT:    mov rp = r35
 ; CHECK-NEXT:    .restore sp
 ; CHECK-NEXT:    add r12 = 32, r12
+; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp udiv_i64#
   %r = udiv i64 %a, %b
@@ -78,13 +77,11 @@ define i64 @srem_i64(i64 %a, i64 %b) {
 ; CHECK-NEXT:    .prologue
 ; CHECK-NEXT:    .save ar.pfs, r34
 ; CHECK-NEXT:    alloc r34 = ar.pfs,0,4,2,0
-; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    .save rp, r35
 ; CHECK-NEXT:    mov r35 = rp
 ; CHECK-NEXT:    .fframe 32
 ; CHECK-NEXT:    add r12 = -32, r12
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    mov out1 = r33
 ; CHECK-NEXT:    mov out0 = r32
 ; CHECK-NEXT:    mov r32 = r1
@@ -99,6 +96,7 @@ define i64 @srem_i64(i64 %a, i64 %b) {
 ; CHECK-NEXT:    mov rp = r35
 ; CHECK-NEXT:    .restore sp
 ; CHECK-NEXT:    add r12 = 32, r12
+; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp srem_i64#
   %r = srem i64 %a, %b
@@ -111,13 +109,11 @@ define i64 @urem_i64(i64 %a, i64 %b) {
 ; CHECK-NEXT:    .prologue
 ; CHECK-NEXT:    .save ar.pfs, r34
 ; CHECK-NEXT:    alloc r34 = ar.pfs,0,4,2,0
-; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    .save rp, r35
 ; CHECK-NEXT:    mov r35 = rp
 ; CHECK-NEXT:    .fframe 32
 ; CHECK-NEXT:    add r12 = -32, r12
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    mov out1 = r33
 ; CHECK-NEXT:    mov out0 = r32
 ; CHECK-NEXT:    mov r32 = r1
@@ -132,6 +128,7 @@ define i64 @urem_i64(i64 %a, i64 %b) {
 ; CHECK-NEXT:    mov rp = r35
 ; CHECK-NEXT:    .restore sp
 ; CHECK-NEXT:    add r12 = 32, r12
+; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp urem_i64#
   %r = urem i64 %a, %b

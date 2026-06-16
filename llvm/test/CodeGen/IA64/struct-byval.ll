@@ -13,13 +13,12 @@ define i64 @pass_struct(%struct.two %s) {
 ; CHECK-LABEL: pass_struct#
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r3
-; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .save ar.pfs, r34
+; CHECK-NEXT:    alloc r34 = ar.pfs,0,3,0,0
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    add r8 = r32, r33
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    mov ar.pfs = r3
+; CHECK-NEXT:    mov ar.pfs = r34
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp pass_struct#
@@ -33,14 +32,13 @@ define %struct.two @ret_struct(i64 %a, i64 %b) {
 ; CHECK-LABEL: ret_struct#
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r3
-; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .save ar.pfs, r34
+; CHECK-NEXT:    alloc r34 = ar.pfs,0,3,0,0
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    mov r9 = r33
 ; CHECK-NEXT:    mov r8 = r32
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    mov ar.pfs = r3
+; CHECK-NEXT:    mov ar.pfs = r34
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp ret_struct#
@@ -62,7 +60,6 @@ define i64 @call_struct(i64 %a, i64 %b) {
 ; CHECK-NEXT:    .fframe 32
 ; CHECK-NEXT:    add r12 = -32, r12
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    mov out1 = r33
 ; CHECK-NEXT:    mov out0 = r32
 ; CHECK-NEXT:    mov r32 = r1
@@ -77,6 +74,7 @@ define i64 @call_struct(i64 %a, i64 %b) {
 ; CHECK-NEXT:    mov rp = r35
 ; CHECK-NEXT:    .restore sp
 ; CHECK-NEXT:    add r12 = 32, r12
+; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp call_struct#
   %s0 = insertvalue %struct.two undef, i64 %a, 0

@@ -11,17 +11,16 @@ define i64 @mul_i64(i64 %a, i64 %b) {
 ; CHECK-LABEL: mul_i64#
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r3
-; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .save ar.pfs, r34
+; CHECK-NEXT:    alloc r34 = ar.pfs,0,3,0,0
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    setf.sig f6 = r33
 ; CHECK-NEXT:    setf.sig f7 = r32
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    xma.l f6 = f7, f6, f0
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    getf.sig r8 = f6
-; CHECK-NEXT:    mov ar.pfs = r3
+; CHECK-NEXT:    mov ar.pfs = r34
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp mul_i64#
@@ -33,17 +32,16 @@ define i64 @mulhu_i64(i64 %a, i64 %b) {
 ; CHECK-LABEL: mulhu_i64#
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r3
-; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .save ar.pfs, r34
+; CHECK-NEXT:    alloc r34 = ar.pfs,0,3,0,0
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    setf.sig f6 = r33
 ; CHECK-NEXT:    setf.sig f7 = r32
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    xma.hu f6 = f7, f6, f0
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    getf.sig r8 = f6
-; CHECK-NEXT:    mov ar.pfs = r3
+; CHECK-NEXT:    mov ar.pfs = r34
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp mulhu_i64#
@@ -59,17 +57,16 @@ define i64 @mulhs_i64(i64 %a, i64 %b) {
 ; CHECK-LABEL: mulhs_i64#
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r3
-; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .save ar.pfs, r34
+; CHECK-NEXT:    alloc r34 = ar.pfs,0,3,0,0
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    setf.sig f6 = r33
 ; CHECK-NEXT:    setf.sig f7 = r32
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    xma.h f6 = f7, f6, f0
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    getf.sig r8 = f6
-; CHECK-NEXT:    mov ar.pfs = r3
+; CHECK-NEXT:    mov ar.pfs = r34
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp mulhs_i64#
@@ -85,17 +82,16 @@ define i32 @mul_i32(i32 %a, i32 %b) {
 ; CHECK-LABEL: mul_i32#
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r3
-; CHECK-NEXT:    alloc r3 = ar.pfs,0,2,0,0
+; CHECK-NEXT:    .save ar.pfs, r34
+; CHECK-NEXT:    alloc r34 = ar.pfs,0,3,0,0
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    setf.sig f6 = r33
 ; CHECK-NEXT:    setf.sig f7 = r32
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    xma.l f6 = f7, f6, f0
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    getf.sig r8 = f6
-; CHECK-NEXT:    mov ar.pfs = r3
+; CHECK-NEXT:    mov ar.pfs = r34
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp mul_i32#
@@ -107,13 +103,12 @@ define i64 @popcnt_i64(i64 %a) {
 ; CHECK-LABEL: popcnt_i64#
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r3
-; CHECK-NEXT:    alloc r3 = ar.pfs,0,1,0,0
+; CHECK-NEXT:    .save ar.pfs, r33
+; CHECK-NEXT:    alloc r33 = ar.pfs,0,2,0,0
 ; CHECK-NEXT:    .body
-; CHECK-NEXT:    // PSEUDO_ALLOC
 ; CHECK-NEXT:    popcnt r8 = r32
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    mov ar.pfs = r3
+; CHECK-NEXT:    mov ar.pfs = r33
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.ret.sptk.many rp
 ; CHECK-NEXT:    .endp popcnt_i64#

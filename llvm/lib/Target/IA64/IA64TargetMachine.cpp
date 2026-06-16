@@ -92,28 +92,6 @@ MachineFunctionInfo *IA64TargetMachine::createMachineFunctionInfo(
 //===----------------------------------------------------------------------===//
 
 namespace {
-// Hoist PSEUDO_ALLOC to the front of the entry block, ahead of the formal-arg
-// live-in copies. Frame lowering's real 'alloc' writes the ar.pfs-save register
-// at function entry, so RA must see that register defined there too; otherwise
-// it reuses it across the leading copies/spills and clobbers the saved ar.pfs.
-struct IA64AllocHoist : public MachineFunctionPass {
-  static char ID;
-  IA64AllocHoist() : MachineFunctionPass(ID) {}
-  StringRef getPassName() const override { return "IA64 PSEUDO_ALLOC hoisting"; }
-  bool runOnMachineFunction(MachineFunction &MF) override {
-    MachineBasicBlock &EntryMBB = MF.front();
-    for (MachineInstr &MI : EntryMBB)
-      if (MI.getOpcode() == IA64::PSEUDO_ALLOC) {
-        if (&MI == &EntryMBB.front())
-          return false;
-        EntryMBB.splice(EntryMBB.begin(), &EntryMBB, MI.getIterator());
-        return true;
-      }
-    return false;
-  }
-};
-char IA64AllocHoist::ID = 0;
-
 // Rewrite the symbolic output registers out0-out7 in debug values to the real
 // stacked register they alias. gas resolves 'out0' to r(32+inputs+locals) from
 // the 'alloc', but the .td gives out0-out7 the fixed DwarfRegNum 120-127 (=
@@ -183,7 +161,6 @@ public:
 
   void addIRPasses() override;
   bool addInstSelector() override;
-  void addPreRegAlloc() override;
   void addPreEmitPass() override;
   void addPreEmitPass2() override;
 };
@@ -208,12 +185,6 @@ void IA64PassConfig::addIRPasses() {
 bool IA64PassConfig::addInstSelector() {
   addPass(createIA64ISelDag(getIA64TargetMachine()));
   return false;
-}
-
-void IA64PassConfig::addPreRegAlloc() {
-  // Make PSEUDO_ALLOC the first instruction so the ar.pfs-save register is live
-  // from function entry (see IA64AllocHoist above).
-  addPass(new IA64AllocHoist());
 }
 
 void IA64PassConfig::addPreEmitPass() {

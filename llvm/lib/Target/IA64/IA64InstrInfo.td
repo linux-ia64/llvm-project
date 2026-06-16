@@ -29,12 +29,14 @@ include "IA64InstrFormats.td"
 //===----------------------------------------------------------------------===//
 
 // RET_FLAG - return with a flag (glue) operand. LowerReturn emits this after
-// restoring ar.pfs; it selects to the RET (br.ret) instruction below.
-// SDNPVariadic is required so the instruction selector transfers the extra
-// register operands LowerReturn glues onto this node (the return-value regs,
-// e.g. r8, and ar.pfs) onto the selected RET machine instruction as implicit
-// uses. Without it those registers look dead and the return-value copies (and
-// everything feeding them) get eliminated, leaving just the 'alloc'.
+// copying the return values into place; it selects to the RET (br.ret)
+// instruction below. SDNPVariadic is required so the instruction selector
+// transfers the extra register operands LowerReturn glues onto this node (the
+// return-value regs, e.g. r8) onto the selected RET machine instruction as
+// implicit uses. Without it those registers look dead and the return-value
+// copies (and everything feeding them) get eliminated, leaving just the
+// 'alloc'. (ar.pfs is no longer among them: frame lowering now restores it from
+// a parked stacked local in the epilogue, alongside rp.)
 def retflag : SDNode<"IA64ISD::RET_FLAG", SDTNone,
                      [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
 
@@ -482,9 +484,6 @@ def ADJUSTCALLSTACKUP : PseudoInstIA64_DAG<(outs),
                         "// ADJUSTCALLSTACKUP",
                         [(callseq_end timm:$amt1, timm:$amt2)]>;
 }
-def PSEUDO_ALLOC : PseudoInstIA64<(outs GR:$dst), (ins variable_ops),
-                                  "// PSEUDO_ALLOC">;
-
 def ALLOC : AForm<0x03, 0x0b,
   (outs GR:$dst), (ins i8imm:$inputs, i8imm:$locals, i8imm:$outputs, i8imm:$rotating),
     "alloc $dst = ar.pfs,$inputs,$locals,$outputs,$rotating">, isM;
@@ -934,8 +933,13 @@ let isCall = 1, /* isTerminator = 1, isBranch = 1, */
     "($qp) br.cond.call.sptk $dst">, isB;
 }
 
-// Return branch:
-let isTerminator = 1, isReturn = 1 in
+// Return branch: br.ret reads the return pointer (b0/rp) and ar.pfs (to restore
+// the caller's register stack frame). Declaring those uses lets the bundling
+// pass insert the mandatory stop between the epilogue's 'mov rp = <reg>' /
+// 'mov ar.pfs = <reg>' and this branch; without it br.ret could read the stale
+// values from the same instruction group (and writing ar.pfs in br.ret's group
+// is an RSE hazard).
+let isTerminator = 1, isReturn = 1, Uses = [rp, AR_PFS] in
   def RET : AForm_DAG<0x03, 0x0b, (outs), (ins),
             "br.ret.sptk.many rp",
             [(retflag)]>, isB; // return
