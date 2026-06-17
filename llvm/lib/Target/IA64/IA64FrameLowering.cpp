@@ -43,7 +43,14 @@ void IA64FrameLowering::emitPrologue(MachineFunction &MF,
   // function. There are 96 stacked GPRs the RSE worries about.
   unsigned NumStackedGPRsUsed = 0;
   for (unsigned i = 0; i != IA64NumStackedGPRs; ++i) {
-    if (MF.getRegInfo().isPhysRegUsed(getIA64StackedGPR(i)))
+    // SkipRegMaskTest: count a stacked register only if it is really allocated
+    // to a value here, not merely clobbered by a call's regmask. A returns_twice
+    // (vfork/setjmp) call carries a regmask clobbering all of r32-r127 (see
+    // IA64TargetLowering::AdjustInstrPostInstrSelection) to keep values out of
+    // the RSE-backed frame across it; without skipping the mask that would size
+    // this 'alloc' to the full 96-register frame.
+    if (MF.getRegInfo().isPhysRegUsed(getIA64StackedGPR(i),
+                                      /*SkipRegMaskTest=*/true))
       NumStackedGPRsUsed = i + 1; // i+1, not ++ - consider fn(fp, fp, int)
   }
 

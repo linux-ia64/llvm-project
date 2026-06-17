@@ -30,6 +30,7 @@
 #include "llvm/CodeGen/TargetInstrInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Target/TargetMachine.h"
@@ -1045,4 +1046,52 @@ void IA64TargetLowering::AdjustInstrPostInstrSelection(MachineInstr &MI,
   if (!IsLocal)
     MI.addOperand(
         MachineOperand::CreateReg(IA64::r1, /*isDef=*/true, /*isImp=*/true));
+
+  // A returns_twice callee on IA-64 cannot preserve the caller's stacked
+  // register frame (r32-r127). The two cases that matter -- setjmp/longjmp and
+  // vfork -- both leave the caller's stacked registers holding something other
+  // than their call-time values: vfork in particular runs the child in the
+  // parent's address space while the parent is blocked, so the child's use of
+  // the shared register backing store overwrites the parent's stacked locals
+  // (observed: an 'interp' argument parked in r32 reads back as 0 -- the value
+  // the vfork child stored there -- in Tcl's TclpCreateProcess, freeing a
+  // non-heap pointer). The static callee-saved registers r4-r7 are not in the
+  // backing store and survive (the kernel restores them from the parent's saved
+  // context); only the RSE-backed stacked registers are unsafe.
+  //
+  // The fixed BRCALL clobber list deliberately omits r32-r127 because an
+  // ordinary call *does* preserve the caller's frame via the RSE. For a
+  // returns_twice call we must additionally mark every stacked register clobbered
+  // so the allocator keeps nothing live across the call there -- such values are
+  // forced into r4-r7 or spilled to memory (which the child does not touch),
+  // exactly as GCC's 'calls_setjmp' handling requires. This complements the
+  // gp/sp/rp parking LowerCall already does for returns_twice functions.
+  //
+  // Express it as a regmask rather than 96 implicit-defs: implicit-def reg
+  // operands make MachineRegisterInfo::isPhysRegUsed report every stacked
+  // register as used, which IA64FrameLowering would then size the 'alloc' frame
+  // around (ballooning it to the 96-register maximum). A regmask is tested
+  // separately and is skipped by the frame-sizing scan (isPhysRegUsed's
+  // SkipRegMaskTest), so it constrains the allocator without inflating the frame.
+  const Function *Callee =
+      Target.isGlobal() ? dyn_cast<Function>(Target.getGlobal()) : nullptr;
+  if (Callee && Callee->hasFnAttribute(Attribute::ReturnsTwice)) {
+    MachineFunction &MF = *MI.getMF();
+    unsigned NumRegs = MF.getSubtarget().getRegisterInfo()->getNumRegs();
+    uint32_t *Mask = MF.allocateRegMask();
+    // A set bit means "preserved"; allocateRegMask zero-inits (clobber all), so
+    // mark everything preserved and then clear just the stacked GPRs. The fixed
+    // Defs above keep clobbering the caller-saved set on top of this mask.
+    for (unsigned I = 0, E = MachineOperand::getRegMaskSize(NumRegs); I != E; ++I)
+      Mask[I] = ~0u;
+    // Register 0 is NoRegister, not a physical register: it must stay clobbered
+    // (bit clear), or regmask consumers that expand preserved bits to reg units
+    // (e.g. MachineCopyPropagation) assert iterating reg-units of reg 0.
+    Mask[0] &= ~1u;
+    for (unsigned I = 0; I != IA64NumStackedGPRs; ++I) {
+      MCRegister R = getIA64StackedGPR(I);
+      Mask[R.id() / 32] &= ~(1u << (R.id() % 32));
+    }
+    MI.addOperand(MachineOperand::CreateRegMask(Mask));
+  }
 }
