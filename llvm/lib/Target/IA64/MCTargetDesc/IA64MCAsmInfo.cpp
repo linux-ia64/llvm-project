@@ -50,6 +50,13 @@ IA64MCAsmInfo::IA64MCAsmInfo(const Triple &TheTriple,
 
   CommentString = "//";
 
+  // The IA-64 backend has no integrated assembler (no MCCodeEmitter/AsmParser);
+  // we always emit assembly text for GNU 'as'. Telling MC we don't use the
+  // integrated assembler makes the AsmPrinter emit inline asm (e.g. the empty
+  // barrier that `core::hint::black_box` lowers to) as raw text instead of
+  // trying to parse it with a (nonexistent) target asm parser.
+  UseIntegratedAssembler = false;
+
   // GNU 'as' for IA-64 treats a bare identifier that matches a register alias
   // (`gp`=r1, `sp`=r12, `tp`=r13, `rp`=b0, `r1`, ...) as that register even in
   // symbol position, so e.g. a C global named `tp` in `@ltoff(tp)` or a pointer
