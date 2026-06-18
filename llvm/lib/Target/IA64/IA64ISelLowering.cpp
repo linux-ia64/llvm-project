@@ -304,6 +304,14 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::UMUL_LOHI, MVT::i64, Expand);
   setOperationAction(ISD::SMUL_LOHI, MVT::i64, Expand);
 
+  // 128-bit shifts (i128, e.g. `core`'s checked_shl) legalize to a *_PARTS node
+  // over an i64 register pair. We have no instruction for that; mark them Expand
+  // so the integer legalizer emits the libgcc libcall (__ashlti3/__ashrti3/
+  // __lshrti3) instead, matching how we already handle 128-bit divide/modulo.
+  setOperationAction(ISD::SHL_PARTS, MVT::i64, Expand);
+  setOperationAction(ISD::SRA_PARTS, MVT::i64, Expand);
+  setOperationAction(ISD::SRL_PARTS, MVT::i64, Expand);
+
   // va_start points the va_list at the register save area (custom); va_arg,
   // va_copy and va_end use the generic load/increment/store expansion. The
   // va_list is a plain pointer, so the default va_copy/va_end suffice.
