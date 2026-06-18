@@ -273,6 +273,18 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
   setTruncStoreAction(MVT::f80, MVT::f32, Expand);
   setTruncStoreAction(MVT::f80, MVT::f64, Expand);
 
+  // IA-64 has no native half (f16). Convert to/from f16 via the soft-float
+  // libcalls (__truncsfhf2/__extendhfsf2 etc.) and never load/store f16 as an
+  // extended/truncated FP value -- it is handled as i16 bits. Mirrors SPARC.
+  // (f128 needs no such setup: with no f128 register class it is soft-floated
+  // to the default libgcc __*tf3 libcalls.)
+  for (MVT VT : {MVT::f32, MVT::f64, MVT::f80, MVT::f128}) {
+    setOperationAction(ISD::FP_TO_FP16, VT, Expand);
+    setOperationAction(ISD::FP16_TO_FP, VT, Expand);
+    setLoadExtAction(ISD::EXTLOAD, VT, MVT::f16, Expand);
+    setTruncStoreAction(VT, MVT::f16, Expand);
+  }
+
   // We don't support sin/cos/sqrt/pow (expand to libcalls: sinl/cosl/sqrtl/...).
   for (MVT VT : {MVT::f32, MVT::f64, MVT::f80}) {
     setOperationAction(ISD::FSIN, VT, Expand);
