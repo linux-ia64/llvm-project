@@ -82,6 +82,12 @@ IA64MCAsmInfo::IA64MCAsmInfo(const Triple &TheTriple,
   // still invoked with -g -- can only synthesize a line table for the assembly
   // file it reads, so gdb shows e.g. "ldo-cbe475.s:257" instead of "ldo.c:NNN".
   SupportsDebugInformation = true;
+
+  // GNU 'as' for IA-64 only accepts the single-string `.file N "name"` form, not
+  // LLVM's default two-argument `.file N "dir" "name"` (it rejects the second
+  // string as "junk at end of line"). Disabling the directory form makes the
+  // MCAsmStreamer fold the directory into the filename: `.file N "dir/name"`.
+  EnableDwarfFileDirectoryDefault = false;
 }
 
 // Print a relocation specifier as "@name(subexpr)", the form GNU 'as' for
