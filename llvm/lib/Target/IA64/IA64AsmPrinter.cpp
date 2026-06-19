@@ -69,6 +69,10 @@ public:
   void emitFunctionBodyStart() override;
   void emitFunctionBodyEnd() override;
   void emitInstruction(const MachineInstr *MI) override;
+  bool PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
+                       const char *ExtraCode, raw_ostream &O) override;
+  bool PrintAsmMemoryOperand(const MachineInstr *MI, unsigned OpNo,
+                             const char *ExtraCode, raw_ostream &O) override;
   void emitGlobalAlias(const Module &M, const GlobalAlias &GA) override;
   const MCExpr *lowerConstant(const Constant *CV, const Constant *BaseCV,
                               uint64_t Offset) override;
@@ -173,6 +177,44 @@ void IA64AsmPrinter::emitInstruction(const MachineInstr *MI) {
   MCInst TmpInst;
   Lower.Lower(MI, TmpInst);
   EmitToStreamer(*OutStreamer, TmpInst);
+}
+
+// Print an inline-asm operand referenced by a '$N' substitution. We handle the
+// no-modifier register and immediate cases (covering the 'r'/'f' and immediate
+// constraints); anything else defers to the generic AsmPrinter handler.
+bool IA64AsmPrinter::PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
+                                     const char *ExtraCode, raw_ostream &O) {
+  if (ExtraCode && ExtraCode[0])
+    // We define no IA-64-specific modifiers; let the generic handler try.
+    return AsmPrinter::PrintAsmOperand(MI, OpNo, ExtraCode, O);
+
+  const MachineOperand &MO = MI->getOperand(OpNo);
+  switch (MO.getType()) {
+  case MachineOperand::MO_Register:
+    O << IA64InstPrinter::getRegisterName(MO.getReg().asMCReg());
+    return false;
+  case MachineOperand::MO_Immediate:
+    O << MO.getImm();
+    return false;
+  default:
+    break;
+  }
+  return AsmPrinter::PrintAsmOperand(MI, OpNo, ExtraCode, O);
+}
+
+// An inline-asm memory operand ('m'): the address lives in a single register,
+// dereferenced as '[rN]'.
+bool IA64AsmPrinter::PrintAsmMemoryOperand(const MachineInstr *MI, unsigned OpNo,
+                                           const char *ExtraCode,
+                                           raw_ostream &O) {
+  if (ExtraCode && ExtraCode[0])
+    return AsmPrinter::PrintAsmMemoryOperand(MI, OpNo, ExtraCode, O);
+
+  const MachineOperand &MO = MI->getOperand(OpNo);
+  if (!MO.isReg())
+    return true;
+  O << '[' << IA64InstPrinter::getRegisterName(MO.getReg().asMCReg()) << ']';
+  return false;
 }
 
 // A GlobalAlias is just another name for the aliasee's symbol; on IA-64 a

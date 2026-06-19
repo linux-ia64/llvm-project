@@ -1117,3 +1117,49 @@ void IA64TargetLowering::AdjustInstrPostInstrSelection(MachineInstr &MI,
     MI.addOperand(MachineOperand::CreateRegMask(Mask));
   }
 }
+
+//===----------------------------------------------------------------------===//
+//                         Inline Assembly Support
+//===----------------------------------------------------------------------===//
+
+TargetLowering::ConstraintType
+IA64TargetLowering::getConstraintType(StringRef Constraint) const {
+  if (Constraint.size() == 1) {
+    switch (Constraint[0]) {
+    default:
+      break;
+    case 'r': // general register
+    case 'f': // floating-point register
+      return C_RegisterClass;
+    }
+  }
+  return TargetLowering::getConstraintType(Constraint);
+}
+
+std::pair<unsigned, const TargetRegisterClass *>
+IA64TargetLowering::getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
+                                                 StringRef Constraint,
+                                                 MVT VT) const {
+  if (Constraint.size() == 1) {
+    switch (Constraint[0]) {
+    case 'r':
+      // Any integer value (including the i1 a Rust bool / black_box produces)
+      // lives in a general register. The GR class only carries i64, so the
+      // generic exact-type search fails for the narrower types; map them here.
+      if (VT.isInteger() || VT == MVT::Other)
+        return std::make_pair(0U, &IA64::GRRegClass);
+      break;
+    case 'f':
+      // f80 ('long double') is wider than the FP class's representative type
+      // (f64), which makes the generic inline-asm register-tiling code assert.
+      // Hand it the f80-only class so its register type is f80; f32/f64 are no
+      // wider than the representative type and use the multi-typed FP class.
+      if (VT == MVT::f80)
+        return std::make_pair(0U, &IA64::FP80RegClass);
+      if (VT == MVT::f32 || VT == MVT::f64)
+        return std::make_pair(0U, &IA64::FPRegClass);
+      break;
+    }
+  }
+  return TargetLowering::getRegForInlineAsmConstraint(TRI, Constraint, VT);
+}

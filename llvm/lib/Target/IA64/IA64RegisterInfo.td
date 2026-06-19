@@ -486,6 +486,19 @@ def FP : RegisterClass<"IA64", [f64, f32, f80], 128,
   let Size = 128;
 }
 
+// An alternate view of the same physical FP registers whose sole value type is
+// f80 ('long double'). This mirrors x86's RFP80 (a single-type class layered
+// over the x87 stack registers): the generic inline-asm ISel path derives a
+// register's type from the *first* legal type of the chosen class, and the
+// multi-typed FP class above leads with f64. Routing an 80-bit value through a
+// 64-bit-typed register slot makes getCopyToParts try to truncate it and assert
+// ("Unknown mismatch!"). Returning this class for the 'f' constraint on an f80
+// value makes the representative register type f80, so the value tiles into one
+// register cleanly. (add FP) reuses FP's registers -- no new physical registers.
+def FP80 : RegisterClass<"IA64", [f80], 128, (add FP)> {
+  let Size = 128;
+}
+
 // these are the predicate registers, p0 (1/TRUE) is not here
 def PR : RegisterClass<"IA64", [i1], 64,
 // for now, only the scratch predicate regs

@@ -134,6 +134,15 @@ public:
   /// callees keep gp and are left alone.
   void AdjustInstrPostInstrSelection(MachineInstr &MI,
                                      SDNode *Node) const override;
+
+  /// Inline-asm support. We recognise the GCC IA-64 register constraints 'r'
+  /// (general register) and 'f' (floating-point register); everything else
+  /// falls back to the generic handling.
+  ConstraintType getConstraintType(StringRef Constraint) const override;
+
+  std::pair<unsigned, const TargetRegisterClass *>
+  getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
+                               StringRef Constraint, MVT VT) const override;
 };
 
 } // end namespace llvm
