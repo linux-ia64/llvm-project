@@ -398,10 +398,12 @@ EVT IA64TargetLowering::getSetCCResultType(const DataLayout & /*DL*/,
 
 bool IA64TargetLowering::isFMAFasterThanFMulAndFAdd(const MachineFunction & /*MF*/,
                                                     EVT VT) const {
-  // fma/fms/fnma fuse a*b+c into one single-rounding F-unit op. f64 and f80
-  // have FMA patterns (FMAD / FMA); f32 FMA isn't promoted, so claiming it for
-  // f32 would form an unselectable f32 fma node (f32 a*b+c stays fmul+fadd).
-  return VT == MVT::f64 || VT == MVT::f80;
+  // fma/fms/fnma fuse a*b+c into one single-rounding F-unit op. f32 (fma.s),
+  // f64 (fma.d) and f80 (fma) each have a hardware FMA pattern, so contracting
+  // fmul+fadd is profitable for them. This stays an explicit whitelist (not
+  // `true`): f16 and f128 are soft-floated, and contracting those would form an
+  // fma node of a width with no hardware pattern (unselectable / soft-float).
+  return VT == MVT::f32 || VT == MVT::f64 || VT == MVT::f80;
 }
 
 bool IA64TargetLowering::isFPImmLegal(const APFloat & /*Imm*/, EVT VT,

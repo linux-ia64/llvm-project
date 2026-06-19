@@ -699,6 +699,18 @@ def FMSD : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$sr
 def FNMAD : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$src3),
   "fnma.d $dst = $src1, $src2, $src3",
   [(set FP:$dst, (f64 (fma (fneg FP:$src1), FP:$src2, FP:$src3)))]>, isF;
+// f32 single-rounding forms (fma.s). compiler_builtins' libm calls
+// llvm.fma.f32 directly, which produces an f32 ISD::FMA node regardless of
+// contraction, so f32 needs its own pattern.
+def FMAS : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$src3),
+  "fma.s $dst = $src1, $src2, $src3",
+  [(set FP:$dst, (f32 (fma FP:$src1, FP:$src2, FP:$src3)))]>, isF;
+def FMSS : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$src3),
+  "fms.s $dst = $src1, $src2, $src3",
+  [(set FP:$dst, (f32 (fma FP:$src1, FP:$src2, (fneg FP:$src3))))]>, isF;
+def FNMAS : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$src3),
+  "fnma.s $dst = $src1, $src2, $src3",
+  [(set FP:$dst, (f32 (fma (fneg FP:$src1), FP:$src2, FP:$src3)))]>, isF;
 
 // Operations only affecting sign do not care about width, so there is just one
 // instruction for all of f32/f64/f80.
