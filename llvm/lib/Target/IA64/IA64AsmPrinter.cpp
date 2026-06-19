@@ -25,6 +25,7 @@
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/GlobalAlias.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCStreamer.h"
@@ -44,6 +45,11 @@ class IA64AsmPrinter : public AsmPrinter {
   // A framed function with more than one epilogue needs .label_state /
   // .copy_state around its '.restore sp's; otherwise gas rejects the second one.
   bool NeedCopyState = false;
+  // Set while lowering a GlobalAlias's aliasee: an alias names the aliasee's
+  // entry-point symbol directly (`A = B`), so suppress the @fptr descriptor
+  // wrapping lowerConstant applies to functions stored in data. See
+  // emitGlobalAlias / lowerConstant.
+  bool InAliasLowering = false;
 
   IA64TargetStreamer &getTargetStreamer() {
     return static_cast<IA64TargetStreamer &>(*OutStreamer->getTargetStreamer());
@@ -63,6 +69,7 @@ public:
   void emitFunctionBodyStart() override;
   void emitFunctionBodyEnd() override;
   void emitInstruction(const MachineInstr *MI) override;
+  void emitGlobalAlias(const Module &M, const GlobalAlias &GA) override;
   const MCExpr *lowerConstant(const Constant *CV, const Constant *BaseCV,
                               uint64_t Offset) override;
 };
@@ -168,14 +175,31 @@ void IA64AsmPrinter::emitInstruction(const MachineInstr *MI) {
   EmitToStreamer(*OutStreamer, TmpInst);
 }
 
+// A GlobalAlias is just another name for the aliasee's symbol; on IA-64 a
+// function alias must resolve to the aliasee's *entry point*, not its function
+// descriptor. The generic AsmPrinter lowers the aliasee through lowerConstant()
+// (which wraps functions in @fptr), so `A = @fptr(B)` would be emitted: that
+// both mis-aliases A to the descriptor and makes GNU as abort (a symbol's value
+// expression can't be an @fptr pseudo-fixup -- "Case value 64 unexpected" in
+// resolve_symbol_value). Flag the alias context so lowerConstant emits the bare
+// entry-point symbol, yielding the correct `A = B`.
+void IA64AsmPrinter::emitGlobalAlias(const Module &M, const GlobalAlias &GA) {
+  InAliasLowering = true;
+  AsmPrinter::emitGlobalAlias(M, GA);
+  InAliasLowering = false;
+}
+
 const MCExpr *IA64AsmPrinter::lowerConstant(const Constant *CV,
                                             const Constant *BaseCV,
                                             uint64_t Offset) {
   // A function pointer stored in data is the address of the function's
   // descriptor { entry, gp }, not its entry point: emit data8 @fptr(f). The
   // linker materializes the .opd descriptor; an indirect call dereferences it.
+  // (Skipped under alias lowering, where the alias must equal the entry point.)
   if (const auto *F = dyn_cast<Function>(CV)) {
     const MCExpr *E = MCSymbolRefExpr::create(getSymbol(F), OutContext);
+    if (InAliasLowering)
+      return E;
     return MCSpecifierExpr::create(E, IA64::S_FPTR, OutContext);
   }
   return AsmPrinter::lowerConstant(CV, BaseCV, Offset);
