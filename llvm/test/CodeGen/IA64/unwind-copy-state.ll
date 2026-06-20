@@ -15,10 +15,10 @@ define void @multi_epilogue(i32 %x) {
 ; CHECK-LABEL: multi_epilogue#
 ; CHECK:       // %bb.0: // %entry
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r34
-; CHECK-NEXT:    alloc r34 = ar.pfs,0,4,1,0
-; CHECK-NEXT:    .save rp, r35
-; CHECK-NEXT:    mov r35 = rp
+; CHECK-NEXT:    .save ar.pfs, r33
+; CHECK-NEXT:    alloc r33 = ar.pfs,0,3,1,0
+; CHECK-NEXT:    .save rp, r34
+; CHECK-NEXT:    mov r34 = rp
 ; CHECK-NEXT:    .fframe 32
 ; CHECK-NEXT:    add r12 = -32, r12
 ; CHECK-NEXT:    .body
@@ -33,15 +33,12 @@ define void @multi_epilogue(i32 %x) {
 ; CHECK-NEXT:  .LBB0_2: // %b
 ; CHECK-NEXT:    adds out0 = 22, r0
 ; CHECK-NEXT:    mov r32 = r1
-; CHECK-NEXT:    mov r33 = rp
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.call.sptk rp = ext1#
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov r1 = r32
-; CHECK-NEXT:    mov rp = r33
-; CHECK-NEXT:    mov ar.pfs = r34
-; CHECK-NEXT:    ;;
-; CHECK-NEXT:    mov rp = r35
+; CHECK-NEXT:    mov ar.pfs = r33
+; CHECK-NEXT:    mov rp = r34
 ; CHECK-NEXT:    .copy_state 1
 ; CHECK-NEXT:    .restore sp
 ; CHECK-NEXT:    add r12 = 32, r12
@@ -50,15 +47,12 @@ define void @multi_epilogue(i32 %x) {
 ; CHECK-NEXT:  .LBB0_1: // %a
 ; CHECK-NEXT:    adds out0 = 11, r0
 ; CHECK-NEXT:    mov r32 = r1
-; CHECK-NEXT:    mov r33 = rp
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.call.sptk rp = ext1#
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov r1 = r32
-; CHECK-NEXT:    mov rp = r33
-; CHECK-NEXT:    mov ar.pfs = r34
-; CHECK-NEXT:    ;;
-; CHECK-NEXT:    mov rp = r35
+; CHECK-NEXT:    mov ar.pfs = r33
+; CHECK-NEXT:    mov rp = r34
 ; CHECK-NEXT:    .copy_state 1
 ; CHECK-NEXT:    .restore sp
 ; CHECK-NEXT:    add r12 = 32, r12

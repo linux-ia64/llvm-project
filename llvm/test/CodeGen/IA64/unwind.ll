@@ -37,23 +37,20 @@ define void @nonleaf() {
 ; CHECK-LABEL: nonleaf#
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r34
-; CHECK-NEXT:    alloc r34 = ar.pfs,0,4,0,0
-; CHECK-NEXT:    .save rp, r35
-; CHECK-NEXT:    mov r35 = rp
+; CHECK-NEXT:    .save ar.pfs, r33
+; CHECK-NEXT:    alloc r33 = ar.pfs,0,3,0,0
+; CHECK-NEXT:    .save rp, r34
+; CHECK-NEXT:    mov r34 = rp
 ; CHECK-NEXT:    .fframe 32
 ; CHECK-NEXT:    add r12 = -32, r12
 ; CHECK-NEXT:    .body
 ; CHECK-NEXT:    mov r32 = r1
-; CHECK-NEXT:    mov r33 = rp
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.call.sptk rp = ext#
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov r1 = r32
-; CHECK-NEXT:    mov rp = r33
-; CHECK-NEXT:    mov ar.pfs = r34
-; CHECK-NEXT:    ;;
-; CHECK-NEXT:    mov rp = r35
+; CHECK-NEXT:    mov ar.pfs = r33
+; CHECK-NEXT:    mov rp = r34
 ; CHECK-NEXT:    .restore sp
 ; CHECK-NEXT:    add r12 = 32, r12
 ; CHECK-NEXT:    ;;
@@ -80,14 +77,11 @@ define i64 @libcall(i64 %a, i64 %b) {
 ; CHECK-NEXT:    mov out1 = r33
 ; CHECK-NEXT:    mov out0 = r32
 ; CHECK-NEXT:    mov r32 = r1
-; CHECK-NEXT:    mov r33 = rp
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.call.sptk rp = __divdi3#
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov r1 = r32
-; CHECK-NEXT:    mov rp = r33
 ; CHECK-NEXT:    mov ar.pfs = r34
-; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov rp = r35
 ; CHECK-NEXT:    .restore sp
 ; CHECK-NEXT:    add r12 = 32, r12

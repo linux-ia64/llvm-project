@@ -24,14 +24,11 @@ define i128 @shl_i128(i128 %a, i128 %b) {
 ; CHECK-NEXT:    mov out0 = r32
 ; CHECK-NEXT:    zxt4 out2 = r34
 ; CHECK-NEXT:    mov r32 = r1
-; CHECK-NEXT:    mov r33 = rp
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.call.sptk rp = __ashlti3#
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov r1 = r32
-; CHECK-NEXT:    mov rp = r33
 ; CHECK-NEXT:    mov ar.pfs = r35
-; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov rp = r36
 ; CHECK-NEXT:    .restore sp
 ; CHECK-NEXT:    add r12 = 32, r12
@@ -57,14 +54,11 @@ define i128 @ashr_i128(i128 %a, i128 %b) {
 ; CHECK-NEXT:    mov out0 = r32
 ; CHECK-NEXT:    sxt4 out2 = r34
 ; CHECK-NEXT:    mov r32 = r1
-; CHECK-NEXT:    mov r33 = rp
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.call.sptk rp = __ashrti3#
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov r1 = r32
-; CHECK-NEXT:    mov rp = r33
 ; CHECK-NEXT:    mov ar.pfs = r35
-; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov rp = r36
 ; CHECK-NEXT:    .restore sp
 ; CHECK-NEXT:    add r12 = 32, r12
@@ -90,14 +84,11 @@ define i128 @lshr_i128(i128 %a, i128 %b) {
 ; CHECK-NEXT:    mov out0 = r32
 ; CHECK-NEXT:    zxt4 out2 = r34
 ; CHECK-NEXT:    mov r32 = r1
-; CHECK-NEXT:    mov r33 = rp
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.call.sptk rp = __lshrti3#
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov r1 = r32
-; CHECK-NEXT:    mov rp = r33
 ; CHECK-NEXT:    mov ar.pfs = r35
-; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov rp = r36
 ; CHECK-NEXT:    .restore sp
 ; CHECK-NEXT:    add r12 = 32, r12

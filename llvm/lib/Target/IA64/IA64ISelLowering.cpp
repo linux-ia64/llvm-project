@@ -735,17 +735,28 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   if (!MemOpChains.empty())
     Chain = DAG.getNode(ISD::TokenFactor, dl, MVT::Other, MemOpChains);
 
-  // Save gp/sp/rp around the call. rp (b0) is the hard requirement -- br.call
-  // overwrites it, so a non-leaf function must preserve its own return pointer;
-  // gp/sp are saved conservatively. These reads must precede the call and the
-  // restores must follow it, so the whole save -> args -> call -> restore
-  // sequence is tied together with glue (note: rp is deliberately *not* in the
-  // BRCALL clobber list, so glue, not the clobber set, is what orders it). The
-  // save vregs are live across the call and therefore land in RSE locals.
-  // Use the glue-carrying getCopyFromReg overload even for the first save (with
-  // a null input glue): it still gives the node a glue *result* to start the
-  // chain. The plain 4-operand form has no glue result, so reading getValue(2)
-  // off it would be out of range.
+  // Save gp/sp around the call. br.call may transfer into another load module
+  // (so the callee's gp must be reinstalled afterwards) and sp is restored
+  // conservatively. These reads must precede the call and the restores must
+  // follow it, so the whole save -> args -> call -> restore sequence is tied
+  // together with glue. Use the glue-carrying getCopyFromReg overload even for
+  // the first save (with a null input glue): it still gives the node a glue
+  // *result* to start the chain. The plain 4-operand form has no glue result,
+  // so reading getValue(2) off it would be out of range.
+  //
+  // We deliberately do NOT save/restore rp (b0) per call here. br.call does
+  // overwrite b0, but frame lowering already parks the incoming rp once in a
+  // stacked local for the whole function (IA64FrameLowering::emitPrologue) and
+  // the epilogue restores b0 from it, so our br.ret returns correctly no matter
+  // how many calls clobber rp in between -- the per-call save was redundant.
+  // Worse, it was actively wrong: rp is a member of the GR class (so that
+  // 'mov rN = rp' works), the save value was live across the call and coalesced
+  // into the physical rp, and the spiller then spilled it with a plain
+  // 'st8 [slot] = rp' / 'ld8 rp = [slot]'. That is illegal -- st8/ld8 require a
+  // general register, not the branch register b0 -- and gas rejects it
+  // ("Operand N of st8/ld8 should be a general register"). The only place rp is
+  // still read around a call is the returns_twice path below, where it is parked
+  // into the CSR r7 *before* the call and so is never live across it as b0.
   SDValue InGlue;
   SDValue GPSave = DAG.getCopyFromReg(Chain, dl, IA64::r1, MVT::i64, InGlue);
   Chain = GPSave.getValue(1);
@@ -753,9 +764,6 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   SDValue SPSave = DAG.getCopyFromReg(Chain, dl, IA64::r12, MVT::i64, InGlue);
   Chain = SPSave.getValue(1);
   InGlue = SPSave.getValue(2);
-  SDValue RPSave = DAG.getCopyFromReg(Chain, dl, IA64::rp, MVT::i64, InGlue);
-  Chain = RPSave.getValue(1);
-  InGlue = RPSave.getValue(2);
 
   // In a function that calls setjmp (and so may be re-entered by longjmp), the
   // save vregs above cannot be allowed to land in stacked locals: longjmp brings
@@ -769,9 +777,15 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   // gp/sp/rp, and any reuse after the restore is harmless because longjmp
   // overwrites it. Because they are true CSRs (getCalleeSavedRegs), a nested
   // setjmp call saves and restores them, so it cannot clobber an outer frame's
-  // parked values. The restore below reads them back out of r4/r6/r7.
+  // parked values. The restore below reads them back out of r4/r6/r7. Reading rp
+  // here is safe (it is parked into r7, a GR, before the call -- never spilled as
+  // b0 across the call).
   bool ReturnsTwice = MF.exposesReturnsTwice();
+  SDValue RPSave;
   if (ReturnsTwice) {
+    RPSave = DAG.getCopyFromReg(Chain, dl, IA64::rp, MVT::i64, InGlue);
+    Chain = RPSave.getValue(1);
+    InGlue = RPSave.getValue(2);
     Chain = DAG.getCopyToReg(Chain, dl, IA64::r4, GPSave, InGlue);
     InGlue = Chain.getValue(1);
     Chain = DAG.getCopyToReg(Chain, dl, IA64::r6, SPSave, InGlue);
@@ -812,9 +826,11 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   Chain = DAG.getNode(IA64ISD::BRCALL, dl, NodeTys, Ops);
   InGlue = Chain.getValue(1);
 
-  // Restore gp/sp/rp after the call. For a returns_twice function read them back
-  // out of r4/r6/r7 (longjmp-safe, see the save above); otherwise from the save
-  // vregs directly.
+  // Restore gp/sp after the call. For a returns_twice function read gp/sp/rp back
+  // out of r4/r6/r7 (longjmp-safe, see the save above) and reinstate rp from r7
+  // (a plain GR->GR copy, never spilled as b0); otherwise restore gp/sp from the
+  // save vregs directly. The common path needs no rp restore -- frame lowering
+  // owns the function's return pointer (see the save block above).
   if (ReturnsTwice) {
     GPSave = DAG.getCopyFromReg(Chain, dl, IA64::r4, MVT::i64, InGlue);
     Chain = GPSave.getValue(1);
@@ -830,8 +846,11 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   InGlue = Chain.getValue(1);
   Chain = DAG.getCopyToReg(Chain, dl, IA64::r12, SPSave, InGlue);
   InGlue = Chain.getValue(1);
-  Chain = DAG.getCopyToReg(Chain, dl, IA64::rp, RPSave, InGlue);
-  InGlue = Chain.getValue(1);
+  // rp last (only for returns_twice), preserving the gp -> sp -> rp restore order.
+  if (ReturnsTwice) {
+    Chain = DAG.getCopyToReg(Chain, dl, IA64::rp, RPSave, InGlue);
+    InGlue = Chain.getValue(1);
+  }
 
   Chain = DAG.getCALLSEQ_END(Chain, NumBytes, 0, InGlue, dl);
   InGlue = Chain.getValue(1);

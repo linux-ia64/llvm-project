@@ -63,14 +63,11 @@ define i64 @call_struct(i64 %a, i64 %b) {
 ; CHECK-NEXT:    mov out1 = r33
 ; CHECK-NEXT:    mov out0 = r32
 ; CHECK-NEXT:    mov r32 = r1
-; CHECK-NEXT:    mov r33 = rp
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.call.sptk rp = take#
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov r1 = r32
-; CHECK-NEXT:    mov rp = r33
 ; CHECK-NEXT:    mov ar.pfs = r34
-; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov rp = r35
 ; CHECK-NEXT:    .restore sp
 ; CHECK-NEXT:    add r12 = 32, r12

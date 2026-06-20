@@ -14,10 +14,10 @@ define void @call_fp(ptr %fp) {
 ; CHECK-LABEL: call_fp#
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    .prologue
-; CHECK-NEXT:    .save ar.pfs, r34
-; CHECK-NEXT:    alloc r34 = ar.pfs,0,4,0,0
-; CHECK-NEXT:    .save rp, r35
-; CHECK-NEXT:    mov r35 = rp
+; CHECK-NEXT:    .save ar.pfs, r33
+; CHECK-NEXT:    alloc r33 = ar.pfs,0,3,0,0
+; CHECK-NEXT:    .save rp, r34
+; CHECK-NEXT:    mov r34 = rp
 ; CHECK-NEXT:    .fframe 32
 ; CHECK-NEXT:    add r12 = -32, r12
 ; CHECK-NEXT:    .body
@@ -26,18 +26,15 @@ define void @call_fp(ptr %fp) {
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    ld8 r8 = [r8]
 ; CHECK-NEXT:    mov r32 = r1
-; CHECK-NEXT:    mov r33 = rp
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov r1 = r8
 ; CHECK-NEXT:    mov b6 = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.call.sptk rp = b6
 ; CHECK-NEXT:    mov r1 = r32
+; CHECK-NEXT:    mov ar.pfs = r33
 ; CHECK-NEXT:    ;;
-; CHECK-NEXT:    mov rp = r33
-; CHECK-NEXT:    mov ar.pfs = r34
-; CHECK-NEXT:    ;;
-; CHECK-NEXT:    mov rp = r35
+; CHECK-NEXT:    mov rp = r34
 ; CHECK-NEXT:    .restore sp
 ; CHECK-NEXT:    add r12 = 32, r12
 ; CHECK-NEXT:    ;;
@@ -64,15 +61,12 @@ define i64 @call_fp_ret(ptr %fp, i64 %a) {
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    ld8 r8 = [r8]
 ; CHECK-NEXT:    mov r32 = r1
-; CHECK-NEXT:    mov r33 = rp
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov r1 = r8
 ; CHECK-NEXT:    mov b6 = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.call.sptk rp = b6
 ; CHECK-NEXT:    mov r1 = r32
-; CHECK-NEXT:    ;;
-; CHECK-NEXT:    mov rp = r33
 ; CHECK-NEXT:    mov ar.pfs = r34
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov rp = r35

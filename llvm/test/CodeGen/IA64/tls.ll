@@ -33,10 +33,10 @@ define ptr @addr_ext() {
 ; PIC-LABEL: addr_ext#
 ; PIC:       // %bb.0:
 ; PIC-NEXT:    .prologue
-; PIC-NEXT:    .save ar.pfs, r34
-; PIC-NEXT:    alloc r34 = ar.pfs,0,4,2,0
-; PIC-NEXT:    .save rp, r35
-; PIC-NEXT:    mov r35 = rp
+; PIC-NEXT:    .save ar.pfs, r33
+; PIC-NEXT:    alloc r33 = ar.pfs,0,3,2,0
+; PIC-NEXT:    .save rp, r34
+; PIC-NEXT:    mov r34 = rp
 ; PIC-NEXT:    .fframe 32
 ; PIC-NEXT:    add r12 = -32, r12
 ; PIC-NEXT:    .body
@@ -47,15 +47,12 @@ define ptr @addr_ext() {
 ; PIC-NEXT:    ;;
 ; PIC-NEXT:    ld8 out1 = [r3]
 ; PIC-NEXT:    mov r32 = r1
-; PIC-NEXT:    mov r33 = rp
 ; PIC-NEXT:    ;;
 ; PIC-NEXT:    br.call.sptk rp = __tls_get_addr#
 ; PIC-NEXT:    ;;
 ; PIC-NEXT:    mov r1 = r32
-; PIC-NEXT:    mov rp = r33
-; PIC-NEXT:    mov ar.pfs = r34
-; PIC-NEXT:    ;;
-; PIC-NEXT:    mov rp = r35
+; PIC-NEXT:    mov ar.pfs = r33
+; PIC-NEXT:    mov rp = r34
 ; PIC-NEXT:    .restore sp
 ; PIC-NEXT:    add r12 = 32, r12
 ; PIC-NEXT:    ;;
@@ -82,10 +79,10 @@ define ptr @addr_loc() {
 ; PIC-LABEL: addr_loc#
 ; PIC:       // %bb.0:
 ; PIC-NEXT:    .prologue
-; PIC-NEXT:    .save ar.pfs, r34
-; PIC-NEXT:    alloc r34 = ar.pfs,0,4,2,0
-; PIC-NEXT:    .save rp, r35
-; PIC-NEXT:    mov r35 = rp
+; PIC-NEXT:    .save ar.pfs, r33
+; PIC-NEXT:    alloc r33 = ar.pfs,0,3,2,0
+; PIC-NEXT:    .save rp, r34
+; PIC-NEXT:    mov r34 = rp
 ; PIC-NEXT:    .fframe 32
 ; PIC-NEXT:    add r12 = -32, r12
 ; PIC-NEXT:    .body
@@ -96,15 +93,12 @@ define ptr @addr_loc() {
 ; PIC-NEXT:    ;;
 ; PIC-NEXT:    ld8 out1 = [r3]
 ; PIC-NEXT:    mov r32 = r1
-; PIC-NEXT:    mov r33 = rp
 ; PIC-NEXT:    ;;
 ; PIC-NEXT:    br.call.sptk rp = __tls_get_addr#
 ; PIC-NEXT:    ;;
 ; PIC-NEXT:    mov r1 = r32
-; PIC-NEXT:    mov rp = r33
-; PIC-NEXT:    mov ar.pfs = r34
-; PIC-NEXT:    ;;
-; PIC-NEXT:    mov rp = r35
+; PIC-NEXT:    mov ar.pfs = r33
+; PIC-NEXT:    mov rp = r34
 ; PIC-NEXT:    .restore sp
 ; PIC-NEXT:    add r12 = 32, r12
 ; PIC-NEXT:    ;;
