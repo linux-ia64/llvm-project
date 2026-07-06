@@ -6,8 +6,10 @@
 //
 //===----------------------------------------------------------------------===//
 //
-//  - Warning: the stuff in here isn't really being used, so is mostly
-//             junk. It'll get fixed as the JIT gets built.
+//  These classes are the base classes for every instruction defined in
+//  IA64InstrInfo.td. The backend is assembly-only (there is no MCCodeEmitter),
+//  so the instruction-encoding fields (the 'Inst' bits) are not consumed by
+//  anything; only the operand lists, asm strings, and instruction flags matter.
 //
 //===----------------------------------------------------------------------===//
 
@@ -16,7 +18,6 @@
 //===----------------------------------------------------------------------===//
 
 class InstIA64<bits<4> op, dag OOL, dag IOL, string asmstr> : Instruction {
-  // IA64 instruction baseline
   field bits<41> Inst;
   let Namespace = "IA64";
   let OutOperandList = OOL;
@@ -25,10 +26,6 @@ class InstIA64<bits<4> op, dag OOL, dag IOL, string asmstr> : Instruction {
 
   let Inst{40-37} = op;
 }
-
-//"Each Itanium instruction is categorized into one of six types."
-//We should have:
-// A, I, M, F, B, L+X
 
 class AForm<bits<4> opcode, bits<6> qpReg, dag OOL, dag IOL, string asmstr> :
   InstIA64<opcode, OOL, IOL, asmstr> {
@@ -42,25 +39,6 @@ class AForm_DAG<bits<4> opcode, bits<6> qpReg, dag OOL, dag IOL, string asmstr,
 
   let Pattern = pattern;
   let Inst{5-0} = qpReg;
-}
-
-let isBranch = 1, isTerminator = 1 in
-class BForm<bits<4> opcode, bits<6> x6, bits<3> btype, dag OOL, dag IOL, string asmstr> :
-  InstIA64<opcode, OOL, IOL, asmstr> {
-
-  let Inst{32-27} = x6;
-  let Inst{8-6} = btype;
-}
-
-class MForm<bits<4> opcode, bits<6> x6, dag OOL, dag IOL, string asmstr> :
-  InstIA64<opcode, OOL, IOL, asmstr> {
-    bits<7> Ra;
-    bits<7> Rb;
-    bits<16> disp;
-
-    let Inst{35-30} = x6;
-//  let Inst{20-16} = Rb;
-    let Inst{15-0} = disp;
 }
 
 class RawForm<bits<4> opcode, bits<26> rest, dag OOL, dag IOL, string asmstr> :

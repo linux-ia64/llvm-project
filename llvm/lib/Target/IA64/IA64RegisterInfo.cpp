@@ -55,13 +55,13 @@ IA64RegisterInfo::IA64RegisterInfo() : IA64GenRegisterInfo(IA64::rp) {}
 
 const MCPhysReg *
 IA64RegisterInfo::getCalleeSavedRegs(const MachineFunction * /*MF*/) const {
-  // r4-r7 are the static callee-saved general registers (IA-64 SysV psABI);
-  // glibc's setjmp/longjmp save and restore them via the jmpbuf. The backend
-  // rarely allocates them (they trail the GR allocation order), but LowerCall
-  // parks gp/sp/rp in r4/r6/r7 across calls in returns_twice (setjmp) functions
-  // -- which only works if every function that touches them saves/restores them,
-  // i.e. they must be true CSRs so a nested setjmp call does not clobber an
-  // outer frame's parked values. (r5 is also the frame pointer.)
+  // r4-r7 are the static callee-saved general registers (IA-64 SysV psABI).
+  // The backend rarely allocates them (they trail the GR allocation order), but
+  // LowerCall parks gp/sp/rp in r4/r6/r7 across calls in returns_twice
+  // functions, which only works if every function that touches them
+  // saves/restores them. Thus, they must be true CSRs so a nested call does not
+  // clobber an outer frame's parked values.
+  // Note: r5 is also the frame pointer.
   static const MCPhysReg CalleeSavedRegs[] = {IA64::r4, IA64::r5, IA64::r6,
                                               IA64::r7, 0};
   return CalleeSavedRegs;
@@ -81,17 +81,13 @@ BitVector IA64RegisterInfo::getReservedRegs(const MachineFunction &MF) const {
   // F0 and F1 are the architectural fixed FP constants +0.0 and +1.0; they are
   // members of the FP class only so they can be named as explicit operands
   // (e.g. F0 is the addend in the xma-based integer-multiply sequence). They
-  // must never be allocated as scratch, or the constant they hold is clobbered.
-  Reserved.set(IA64::F0);  // fixed +0.0
-  Reserved.set(IA64::F1);  // fixed +1.0
+  // must never be allocated as scratch.
+  Reserved.set(IA64::F0); // fixed +0.0
+  Reserved.set(IA64::F1); // fixed +1.0
 
   // The output registers (out0-out7) are an alias for the top of the stacked
   // register frame that 'alloc' carves out for passing arguments to callees;
-  // they are not freely allocatable. The pre-removal backend hid them from the
-  // GR allocation order via RegisterClass MethodBodies (a mechanism that no
-  // longer exists); we express that reservation here. They lead the GR
-  // allocation order, so without this the ar.pfs-save GR lands on 'out7',
-  // which is meaningless when 'alloc' declares zero output registers.
+  // they are not freely allocatable.
   Reserved.set(IA64::out0);
   Reserved.set(IA64::out1);
   Reserved.set(IA64::out2);
@@ -101,24 +97,14 @@ BitVector IA64RegisterInfo::getReservedRegs(const MachineFunction &MF) const {
   Reserved.set(IA64::out6);
   Reserved.set(IA64::out7);
 
-  // ar.pfs is an application register, not a freely allocatable GPR — it is a
-  // member of the GR class only so 'mov ar.pfs = rN' / 'alloc rN = ar.pfs' can
-  // name it. The pre-removal backend kept it out of the GR allocation order via
-  // RegisterClass MethodBodies; reserving it here is the modern equivalent.
-  // Without this, the coalescer folds the ar.pfs-save vreg straight into
-  // AR_PFS, producing the nonsensical 'alloc ar.pfs = ar.pfs' (the save GR is
-  // lost). Reserved, the restore copy 'mov ar.pfs = rN' survives and the
-  // save vreg is allocated to a real scratch GR (r3 for a leaf function).
+  // Reserve special registers ar.pfs and b6, both of which are sole members
+  // of their register class (AR/BR).
   Reserved.set(IA64::AR_PFS);
-  Reserved.set(IA64::B6);  // indirect-call branch target (set up per call site)
+  Reserved.set(IA64::B6);
 
-  // Cap the stacked-GPR register frame. 'alloc' carves a frame of
-  // (locals + outputs) stacked registers out of r32-r127, and the architecture
-  // limits that frame to 96 registers.
   // Reserve the last 8 + 2 registers for out0-out7 + the saved return pointer +
-  // the saved ar.pfs. Frame lowering parks rp and ar.pfs in stacked locals just
-  // above the ones the allocator used (see IA64FrameLowering::emitPrologue), so
-  // the allocator must leave two registers below the outputs for them.
+  // the saved ar.pfs.
+  // FIXME: Allow those not used as output registers to be allocated.
   Reserved.set(IA64::r118);
   Reserved.set(IA64::r119);
   Reserved.set(IA64::r120);
@@ -129,6 +115,7 @@ BitVector IA64RegisterInfo::getReservedRegs(const MachineFunction &MF) const {
   Reserved.set(IA64::r125);
   Reserved.set(IA64::r126);
   Reserved.set(IA64::r127);
+
   return Reserved;
 }
 
@@ -155,13 +142,14 @@ bool IA64RegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
   int Offset = MF.getFrameInfo().getObjectOffset(FrameIndex);
   Offset += MF.getFrameInfo().getStackSize();
 
-  // We use 'r22' as an address-calculation scratch register here.
   MI.getOperand(FIOperandNum).ChangeToRegister(IA64::r22, false);
-  if (Offset <= 8191 && Offset >= -8192) { // smallish offset
+  // Try to build pointer using a single ADDL instruction.
+  if (Offset <= 8191 && Offset >= -8192) {
     BuildMI(MBB, II, DL, TII->get(IA64::ADDIMM22), IA64::r22)
         .addReg(BaseRegister)
         .addImm(Offset);
-  } else { // it's big
+  } else {
+    // Offset too big, materialize it using MOVL and emit a regular ADD.
     BuildMI(MBB, II, DL, TII->get(IA64::MOVLIMM64), IA64::r22).addImm(Offset);
     BuildMI(MBB, II, DL, TII->get(IA64::ADD), IA64::r22)
         .addReg(BaseRegister)

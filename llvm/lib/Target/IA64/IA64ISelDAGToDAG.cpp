@@ -9,14 +9,6 @@
 // This file defines a pattern matching instruction selector for IA64,
 // converting a legalized DAG into an IA64 DAG.
 //
-// The pre-removal selector hand-selected a great deal (FP divide expansion, the
-// BRCALL call hack, manual load/store/branch handling). Most arithmetic now
-// flows through the tablegen-generated matcher (SelectCode); the cases that
-// cannot be (or were not) expressed as patterns are hand-selected here, as the
-// pre-removal backend did: FrameIndex (Stage 1); the branches BR/BRCOND, whose
-// target is an i64imm rather than a tablegen 'bb' operand; the IA64ISD::BRCALL
-// call node; and loads/stores, dispatched on the memory type (Stage C).
-//
 //===----------------------------------------------------------------------===//
 
 #include "IA64.h"
@@ -88,7 +80,7 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
 
   case ISD::GlobalAddress: {
     // Materialize a global's address out of the linkage table (GOT), anchored
-    // by gp (r1), transcribing the pre-removal selector:
+    // by gp (r1):
     //   addl rX = <sym>, gp ;; ld8 rX = [rX]
     // The ADDL_GA computes the address of the symbol's GOT slot relative to gp,
     // and the LD8 loads the symbol's runtime address from it. The GOT slot is
@@ -98,11 +90,11 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
     // Tag the symbol with the @ltoff specifier (carried on the target flags);
     // IA64MCInstLower turns it into the printed "@ltoff(sym)" so gas builds the
     // GOT entry the LD8 below reads. A function's address is its descriptor, so
-    // the GOT entry must hold @ltoff(@fptr(f)) (the descriptor address), not the
-    // raw entry point -- an indirect call dereferences it as { entry, gp }.
+    // the GOT entry must hold @ltoff(@fptr(f)) (the descriptor address), not
+    // the raw entry point - an indirect call dereferences it as { entry, gp }.
     unsigned Spec = isa<Function>(GV) ? IA64::S_LTOFF_FPTR : IA64::S_LTOFF;
-    SDValue GA = CurDAG->getTargetGlobalAddress(GV, dl, MVT::i64, /*offset=*/0,
-                                                Spec);
+    SDValue GA =
+        CurDAG->getTargetGlobalAddress(GV, dl, MVT::i64, /*offset=*/0, Spec);
     SDValue Slot = SDValue(
         CurDAG->getMachineNode(IA64::ADDL_GA, dl, MVT::i64,
                                CurDAG->getRegister(IA64::r1, MVT::i64), GA),
@@ -116,10 +108,11 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
 
   case IA64ISD::TLS_GOTLOAD: {
     // Load a thread-local datum (a TLS offset or module id) from the symbol's
-    // GOT slot: addl rX = @ltoff(@<tls>(sym)), gp ;; ld8 rX = [rX]. Identical to
-    // the GlobalAddress case above, but the @ltoff specifier is already carried
-    // on the operand's target flags (set by LowerGlobalTLSAddress); the loaded
-    // value is consumed by 'add tp' (initial-exec) or __tls_get_addr (dynamic).
+    // GOT slot: addl rX = @ltoff(@<tls>(sym)), gp ;; ld8 rX = [rX]. Identical
+    // to the GlobalAddress case above, but the @ltoff specifier is already
+    // carried on the operand's target flags (set by LowerGlobalTLSAddress); the
+    // loaded value is consumed by 'add tp' (initial-exec) or __tls_get_addr
+    // (dynamic).
     SDLoc dl(N);
     SDValue GA = N->getOperand(0);
     SDValue Slot = SDValue(
@@ -163,14 +156,15 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
   case ISD::ConstantPool: {
     // Materialize a constant-pool entry's address the same way as a global or
     // jump table: load it from its GOT slot (addl @ltoff(.LCPI), gp ;; ld8).
-    // The f80 ('long double') immediates that the legalizer spills here are then
-    // loaded with ldfe (the f80 load pattern). (f32/f64 immediates stay out of
-    // the pool -- see isFPImmLegal -- so this path is exercised only by f80.)
+    // The f80 ('long double') immediates that the legalizer spills here are
+    // then loaded with ldfe (the f80 load pattern). (f32/f64 immediates stay
+    // out of the pool - see isFPImmLegal - so this path is exercised only by
+    // f80.)
     ConstantPoolSDNode *CP = cast<ConstantPoolSDNode>(N);
     SDLoc dl(N);
-    SDValue CPA = CurDAG->getTargetConstantPool(
-        CP->getConstVal(), MVT::i64, CP->getAlign(), CP->getOffset(),
-        IA64::S_LTOFF);
+    SDValue CPA = CurDAG->getTargetConstantPool(CP->getConstVal(), MVT::i64,
+                                                CP->getAlign(), CP->getOffset(),
+                                                IA64::S_LTOFF);
     SDValue Slot = SDValue(
         CurDAG->getMachineNode(IA64::ADDL_GA, dl, MVT::i64,
                                CurDAG->getRegister(IA64::r1, MVT::i64), CPA),
@@ -185,9 +179,8 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
   case ISD::BR: {
     // br bb  ->  (p0) brl.cond bb.  The branch instructions carry an i64imm
     // target operand (not a tablegen 'bb' operand), so they are hand-selected
-    // rather than pattern-matched, as the pre-removal backend did. The
-    // MachineBasicBlock operand is lowered to the block's symbol by
-    // IA64MCInstLower. Operands: (chain, BasicBlock).
+    // rather than pattern-matched. The MachineBasicBlock operand is lowered to
+    // the block's symbol by IA64MCInstLower. Operands: (chain, BasicBlock).
     SDValue Chain = N->getOperand(0);
     SDValue Target = N->getOperand(1);
     CurDAG->SelectNodeTo(N, IA64::BRL_NOTCALL, MVT::Other, Target, Chain);
@@ -214,8 +207,7 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
     SDLoc dl(N);
     SDValue Chain = N->getOperand(0);
     SDValue Target = N->getOperand(1);
-    SDValue Copy =
-        CurDAG->getCopyToReg(Chain, dl, IA64::B6, Target, SDValue());
+    SDValue Copy = CurDAG->getCopyToReg(Chain, dl, IA64::B6, Target, SDValue());
     CurDAG->SelectNodeTo(N, IA64::BRINDIRECT, MVT::Other,
                          CurDAG->getRegister(IA64::B6, MVT::i64),
                          Copy.getValue(0), Copy.getValue(1));
@@ -223,8 +215,10 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
   }
 
   case IA64ISD::BRCALL: {
-    // The call hack: LowerCall builds IA64ISD::BRCALL (chain, callee,
-    // arg-reg uses..., [glue]) and leaves the callee as a
+    // Custom-selected because br.call targets a branch register (rp for the
+    // return address, b6 for an indirect target) rather than a GPR, which the
+    // generic matcher can't express. LowerCall builds IA64ISD::BRCALL (chain,
+    // callee, arg-reg uses..., [glue]) and leaves the callee as a
     // Target{GlobalAddress,ExternalSymbol}. A direct call selects to
     // 'br.call rp = <target>'; the argument-register operands carry through as
     // the call's (precise) implicit uses. An indirect / function-descriptor
@@ -278,26 +272,33 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
 
     unsigned Opc;
     switch (AN->getMemoryVT().getSimpleVT().SimpleTy) {
-    case MVT::i8:  Opc = IA64::CMPXCHG1; break;
-    case MVT::i16: Opc = IA64::CMPXCHG2; break;
-    case MVT::i32: Opc = IA64::CMPXCHG4; break;
-    case MVT::i64: Opc = IA64::CMPXCHG8; break;
+    case MVT::i8:
+      Opc = IA64::CMPXCHG1;
+      break;
+    case MVT::i16:
+      Opc = IA64::CMPXCHG2;
+      break;
+    case MVT::i32:
+      Opc = IA64::CMPXCHG4;
+      break;
+    case MVT::i64:
+      Opc = IA64::CMPXCHG8;
+      break;
     default:
       report_fatal_error("IA64: cannot select a cmpxchg of this type");
     }
 
     // The cmpxchg itself is .acq (acquire). For release/seq_cst, prepend a full
-    // fence so prior memory effects are ordered before the swap; the combination
-    // is a correct (conservative) full barrier.
+    // fence so prior memory effects are ordered before the swap; the
+    // combination is a correct (conservative) full barrier.
     if (isReleaseOrStronger(AN->getMergedOrdering()))
       Chain =
           SDValue(CurDAG->getMachineNode(IA64::MF, dl, MVT::Other, Chain), 0);
 
     // mov ar.ccv = cmp, glued to the cmpxchg so it stays immediately before it
     // (and the ar.ccv physreg def/use is not separated by another writer).
-    SDValue Ccv =
-        SDValue(CurDAG->getMachineNode(IA64::MOV_TO_AR_CCV, dl, MVT::Glue, Cmp),
-                0);
+    SDValue Ccv = SDValue(
+        CurDAG->getMachineNode(IA64::MOV_TO_AR_CCV, dl, MVT::Glue, Cmp), 0);
 
     SDValue Ops[] = {Ptr, New, Chain, Ccv};
     MachineSDNode *Cas =
@@ -331,7 +332,7 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
           CurDAG->getMachineNode(IA64::CMPNE, dl, MVT::i1, SDValue(Byte, 0),
                                  CurDAG->getRegister(IA64::r0, MVT::i64)),
           0);
-      ReplaceUses(SDValue(N, 0), Pred);            // the i1 value
+      ReplaceUses(SDValue(N, 0), Pred);             // the i1 value
       ReplaceUses(SDValue(N, 1), SDValue(Byte, 1)); // the chain
       CurDAG->RemoveDeadNode(N);
       return;
@@ -339,31 +340,49 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
 
     unsigned Opc;
     switch (LD->getMemoryVT().getSimpleVT().SimpleTy) {
-    case MVT::i8:  Opc = IA64::LD1;  break;
-    case MVT::i16: Opc = IA64::LD2;  break;
-    case MVT::i32: Opc = IA64::LD4;  break;
-    case MVT::i64: Opc = IA64::LD8;  break;
-    case MVT::f32: Opc = IA64::LDF4; break;
-    case MVT::f64: Opc = IA64::LDF8; break;
-    case MVT::f80: Opc = IA64::LDFE; break;
+    case MVT::i8:
+      Opc = IA64::LD1;
+      break;
+    case MVT::i16:
+      Opc = IA64::LD2;
+      break;
+    case MVT::i32:
+      Opc = IA64::LD4;
+      break;
+    case MVT::i64:
+      Opc = IA64::LD8;
+      break;
+    case MVT::f32:
+      Opc = IA64::LDF4;
+      break;
+    case MVT::f64:
+      Opc = IA64::LDF8;
+      break;
+    case MVT::f80:
+      Opc = IA64::LDFE;
+      break;
     default:
       report_fatal_error("IA64: cannot select a load of this type");
     }
     // A sign-extending narrow load: the LDx above zero-extends into the 64-bit
-    // GR, so follow it with the matching sxt to sign-extend. Without this a
-    // signed value (e.g. a negative 'int' used in a signed compare -- a Lua
-    // stack index) is read as a large positive number and the compare goes wrong.
+    // GR, so follow it with the matching sxt to sign-extend.
     if (LD->getExtensionType() == ISD::SEXTLOAD) {
       unsigned SxtOpc;
       switch (LD->getMemoryVT().getSimpleVT().SimpleTy) {
-      case MVT::i8:  SxtOpc = IA64::SXT1; break;
-      case MVT::i16: SxtOpc = IA64::SXT2; break;
-      case MVT::i32: SxtOpc = IA64::SXT4; break;
+      case MVT::i8:
+        SxtOpc = IA64::SXT1;
+        break;
+      case MVT::i16:
+        SxtOpc = IA64::SXT2;
+        break;
+      case MVT::i32:
+        SxtOpc = IA64::SXT4;
+        break;
       default:
         report_fatal_error("IA64: unexpected sign-extending load width");
       }
-      SDNode *Ld = CurDAG->getMachineNode(Opc, dl, MVT::i64, MVT::Other,
-                                          Address, Chain);
+      SDNode *Ld =
+          CurDAG->getMachineNode(Opc, dl, MVT::i64, MVT::Other, Address, Chain);
       SDNode *Sxt =
           CurDAG->getMachineNode(SxtOpc, dl, MVT::i64, SDValue(Ld, 0));
       ReplaceUses(SDValue(N, 0), SDValue(Sxt, 0)); // sign-extended value
@@ -371,7 +390,8 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
       CurDAG->RemoveDeadNode(N);
       return;
     }
-    CurDAG->SelectNodeTo(N, Opc, N->getValueType(0), MVT::Other, Address, Chain);
+    CurDAG->SelectNodeTo(N, Opc, N->getValueType(0), MVT::Other, Address,
+                         Chain);
     return;
   }
 
@@ -393,11 +413,11 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
                                  CurDAG->getRegister(IA64::r0, MVT::i64),
                                  CurDAG->getTargetConstant(0, dl, MVT::i64)),
           0);
-      SDValue Wide = SDValue(
-          CurDAG->getMachineNode(IA64::TPCADDS, dl, MVT::i64, Zero,
-                                 CurDAG->getTargetConstant(1, dl, MVT::i64),
-                                 Value),
-          0);
+      SDValue Wide =
+          SDValue(CurDAG->getMachineNode(
+                      IA64::TPCADDS, dl, MVT::i64, Zero,
+                      CurDAG->getTargetConstant(1, dl, MVT::i64), Value),
+                  0);
       CurDAG->SelectNodeTo(N, IA64::ST1, MVT::Other, Address, Wide, Chain);
       return;
     }
@@ -405,23 +425,38 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
     unsigned Opc;
     if (!ST->isTruncatingStore()) {
       switch (Value.getValueType().getSimpleVT().SimpleTy) {
-      case MVT::i64: Opc = IA64::ST8;  break;
-      case MVT::f64: Opc = IA64::STF8; break;
-      case MVT::f32: Opc = IA64::STF4; break;
-      case MVT::f80: Opc = IA64::STFE; break;
+      case MVT::i64:
+        Opc = IA64::ST8;
+        break;
+      case MVT::f64:
+        Opc = IA64::STF8;
+        break;
+      case MVT::f32:
+        Opc = IA64::STF4;
+        break;
+      case MVT::f80:
+        Opc = IA64::STFE;
+        break;
       default:
         report_fatal_error("IA64: cannot select a store of this type");
       }
     } else {
       switch (ST->getMemoryVT().getSimpleVT().SimpleTy) {
-      case MVT::i8:  Opc = IA64::ST1;  break;
-      case MVT::i16: Opc = IA64::ST2;  break;
-      case MVT::i32: Opc = IA64::ST4;  break;
-      // NB: FP truncating stores are set to Expand in IA64TargetLowering --
+      case MVT::i8:
+        Opc = IA64::ST1;
+        break;
+      case MVT::i16:
+        Opc = IA64::ST2;
+        break;
+      case MVT::i32:
+        Opc = IA64::ST4;
+        break;
+      // NB: FP truncating stores are set to Expand in IA64TargetLowering;
       // stfs/stf8 do not round, so they must become an explicit fpround
       // (FNORMS/FNORMD) plus a same-size store before reaching the selector.
       default:
-        report_fatal_error("IA64: cannot select a truncating store of this type");
+        report_fatal_error(
+            "IA64: cannot select a truncating store of this type");
       }
     }
     // ST* operands are (dstPtr, value): address first, then the stored value.
@@ -434,10 +469,10 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
 }
 
 // Implement addressing-mode selection for inline-asm memory operands. IA-64
-// loads and stores dereference a single register with no displacement
-// ('[rN]'), so for the 'm' (and equivalent 'o') constraint the address operand
-// is passed straight through as one register; IA64AsmPrinter::
-// PrintAsmMemoryOperand then prints it as '[rN]'.
+// loads and stores dereference a single register with no displacement ('[rN]'),
+// so for the 'm' (and equivalent 'o') constraint the address operand is passed
+// straight through as one register; IA64AsmPrinter::PrintAsmMemoryOperand then
+// prints it as '[rN]'.
 bool IA64DAGToDAGISel::SelectInlineAsmMemoryOperand(
     const SDValue &Op, InlineAsm::ConstraintCode ConstraintID,
     std::vector<SDValue> &OutOps) {

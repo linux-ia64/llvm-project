@@ -28,7 +28,8 @@ void IA64InstPrinter::printRegName(raw_ostream &OS, MCRegister Reg) {
 }
 
 void IA64InstPrinter::printInst(const MCInst *MI, uint64_t Address,
-                                StringRef Annot, const MCSubtargetInfo & /*STI*/,
+                                StringRef Annot,
+                                const MCSubtargetInfo & /*STI*/,
                                 raw_ostream &O) {
   printInstruction(MI, Address, O);
   printAnnotation(O, Annot);
@@ -49,8 +50,7 @@ void IA64InstPrinter::printOperand(const MCInst *MI, unsigned OpNo,
   MAI.printExpr(O, *Op.getExpr());
 }
 
-// Sign-extend and print an immediate of the given bit width. The pre-removal
-// AsmPrinter did this by hand because the operands are stored unsigned.
+// Sign-extend and print an immediate of the given bit width.
 void IA64InstPrinter::printS8ImmOperand(const MCInst *MI, unsigned OpNo,
                                         raw_ostream &O) {
   int Val = (int)MI->getOperand(OpNo).getImm();
@@ -82,17 +82,4 @@ void IA64InstPrinter::printS64ImmOperand(const MCInst *MI, unsigned OpNo,
     O << Op.getImm();
   else // a constant-pool / symbol reference
     printOperand(MI, OpNo, O);
-}
-
-// plus.ll exercises no globals or calls; the @ltoff(@fptr(...)) decoration the
-// pre-removal backend applied is out of Stage-1 scope, so these defer to the
-// generic operand printer for now.
-void IA64InstPrinter::printGlobalOperand(const MCInst *MI, unsigned OpNo,
-                                         raw_ostream &O) {
-  printOperand(MI, OpNo, O);
-}
-
-void IA64InstPrinter::printCallOperand(const MCInst *MI, unsigned OpNo,
-                                       raw_ostream &O) {
-  printOperand(MI, OpNo, O);
 }

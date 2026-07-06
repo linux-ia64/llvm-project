@@ -27,4 +27,4 @@ void IA64Subtarget::anchor() {}
 IA64Subtarget::IA64Subtarget(const Triple &TT, StringRef CPU, StringRef TuneCPU,
                              StringRef FS, const TargetMachine &TM)
     : IA64GenSubtargetInfo(TT, CPU, TuneCPU, FS), FrameLowering(),
-      InstrInfo(*this), TLInfo(TM, *this) { }
+      InstrInfo(*this), TLInfo(TM, *this) {}

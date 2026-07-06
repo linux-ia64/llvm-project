@@ -6,9 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the IA64 specific subclass of TargetSubtargetInfo. It was
-// trivial in the pre-removal backend; modern LLVM uses it as the aggregate that
-// owns the InstrInfo, FrameLowering, RegisterInfo and TargetLowering.
+// This file declares the IA64 specific subclass of TargetSubtargetInfo.
 //
 //===----------------------------------------------------------------------===//
 
@@ -18,8 +16,9 @@
 #include "IA64FrameLowering.h"
 #include "IA64ISelLowering.h"
 #include "IA64InstrInfo.h"
-#include "llvm/CodeGen/TargetSubtargetInfo.h"
+#include "IA64SelectionDAGInfo.h"
 #include "llvm/CodeGen/SelectionDAGTargetInfo.h"
+#include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/TargetParser/Triple.h"
 
 #define GET_SUBTARGETINFO_HEADER
@@ -39,7 +38,7 @@ class IA64Subtarget : public IA64GenSubtargetInfo {
   IA64FrameLowering FrameLowering;
   IA64InstrInfo InstrInfo;
   IA64TargetLowering TLInfo;
-  SelectionDAGTargetInfo TSInfo;
+  IA64SelectionDAGInfo TSInfo;
 
 public:
   IA64Subtarget(const Triple &TT, StringRef CPU, StringRef TuneCPU,

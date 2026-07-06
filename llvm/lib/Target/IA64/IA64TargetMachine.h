@@ -17,8 +17,6 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/CodeGen/CodeGenTargetMachineImpl.h"
 #include "llvm/Target/TargetMachine.h"
-#include <memory>
-#include <optional>
 
 namespace llvm {
 

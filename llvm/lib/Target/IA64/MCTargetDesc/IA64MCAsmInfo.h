@@ -6,9 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file contains the declaration of the IA64MCAsmInfo class. It is the
-// modern (MC-layer) replacement for the pre-removal IA64TargetAsmInfo, which
-// subclassed the long-deleted ELFTargetAsmInfo.
+// This file contains the declaration of the IA64MCAsmInfo class.
 //
 //===----------------------------------------------------------------------===//
 
@@ -38,13 +36,14 @@ enum Specifier : uint16_t {
   // entry; emitted for the ADDL_GA + LD8 global-address sequence.
   S_LTOFF = MCSymbolRefExpr::FirstTargetSpecifier,
   // @fptr(sym): the address of the function descriptor { entry, gp } for a
-  // function symbol -- what a C function pointer must hold. Emitted for
+  // function symbol - what a C function pointer must hold. Emitted for
   // function pointers stored in data (data8 @fptr(f)).
   S_FPTR,
   // Thread-local storage offsets. @tprel(sym) is the symbol's offset from the
   // thread pointer (tp/r13), used directly in local-exec (movl @tprel). @dtprel
-  // and @dtpmod are the dynamic-model offset and module id, materialised through
-  // the GOT (see the S_LTOFF_* markers below) and consumed by __tls_get_addr.
+  // and @dtpmod are the dynamic-model offset and module id, materialised
+  // through the GOT (see the S_LTOFF_* markers below) and consumed by
+  // __tls_get_addr.
   S_TPREL,
   S_DTPREL,
   S_DTPMOD,

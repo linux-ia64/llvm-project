@@ -19,9 +19,7 @@ class MCInst;
 class MCOperand;
 class MCSymbol;
 
-/// IA64MCInstLower - This class lowers a MachineInstr into an MCInst. This did
-/// not exist in the pre-removal backend, which printed MachineInstrs directly;
-/// modern LLVM routes machine code through the MC layer.
+/// IA64MCInstLower - This class lowers a MachineInstr into an MCInst.
 class IA64MCInstLower {
   MCContext &Ctx;
   AsmPrinter &Printer;

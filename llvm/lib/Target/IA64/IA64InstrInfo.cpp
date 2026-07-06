@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "IA64InstrInfo.h"
+#include "IA64Subtarget.h"
 #include "MCTargetDesc/IA64MCTargetDesc.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 
@@ -22,8 +23,8 @@ using namespace llvm;
 // Pin the vtable to this translation unit.
 void IA64InstrInfo::anchor() {}
 
-IA64InstrInfo::IA64InstrInfo(const TargetSubtargetInfo &STI)
-    : IA64GenInstrInfo(STI, RI, IA64::ADJUSTCALLSTACKDOWN,
+IA64InstrInfo::IA64InstrInfo(const IA64Subtarget &ST)
+    : IA64GenInstrInfo(ST, RI, IA64::ADJUSTCALLSTACKDOWN,
                        IA64::ADJUSTCALLSTACKUP),
       RI() {}
 
@@ -61,7 +62,8 @@ void IA64InstrInfo::copyPhysReg(MachineBasicBlock &MBB,
 
   if (IA64::BRRegClass.contains(DestReg)) {
     // Loading a branch register (b6) for an indirect call: 'mov b6 = rN'. Like
-    // ar.pfs, b6 is in its own class, so the generic GR MOV below cannot name it.
+    // ar.pfs, b6 is in its own class, so the generic GR MOV below cannot name
+    // it.
     BuildMI(MBB, I, DL, get(IA64::MOV_TO_BR), DestReg)
         .addReg(SrcReg, getKillRegState(KillSrc));
     return;
@@ -85,13 +87,10 @@ void IA64InstrInfo::copyPhysReg(MachineBasicBlock &MBB,
       .addReg(SrcReg, getKillRegState(KillSrc));
 }
 
-void IA64InstrInfo::storeRegToStackSlot(MachineBasicBlock &MBB,
-                                        MachineBasicBlock::iterator MI,
-                                        Register SrcReg, bool isKill,
-                                        int FrameIdx,
-                                        const TargetRegisterClass *RC,
-                                        Register /*VReg*/,
-                                        MachineInstr::MIFlag /*Flags*/) const {
+void IA64InstrInfo::storeRegToStackSlot(
+    MachineBasicBlock &MBB, MachineBasicBlock::iterator MI, Register SrcReg,
+    bool isKill, int FrameIdx, const TargetRegisterClass *RC, Register /*VReg*/,
+    MachineInstr::MIFlag /*Flags*/) const {
   DebugLoc DL;
   if (MI != MBB.end())
     DL = MI->getDebugLoc();
@@ -107,7 +106,7 @@ void IA64InstrInfo::storeRegToStackSlot(MachineBasicBlock &MBB,
         .addFrameIndex(FrameIdx)
         .addReg(SrcReg, getKillRegState(isKill));
   } else if (RC == &IA64::PRRegClass) {
-    // We use IA64::r2 as a temporary register for doing this hackery.
+    // Store of predicate onto the stack uses IA64::r2 as a temporary register.
     // First we load 0:
     BuildMI(MBB, MI, DL, get(IA64::MOV), IA64::r2).addReg(IA64::r0);
     // Then conditionally add 1:
@@ -116,7 +115,9 @@ void IA64InstrInfo::storeRegToStackSlot(MachineBasicBlock &MBB,
         .addImm(1)
         .addReg(SrcReg, getKillRegState(isKill));
     // And then store it to the stack:
-    BuildMI(MBB, MI, DL, get(IA64::ST8)).addFrameIndex(FrameIdx).addReg(IA64::r2);
+    BuildMI(MBB, MI, DL, get(IA64::ST8))
+        .addFrameIndex(FrameIdx)
+        .addReg(IA64::r2);
   } else {
     llvm_unreachable("sorry, I don't know how to store this sort of reg "
                      "in the stack");
@@ -139,11 +140,10 @@ void IA64InstrInfo::loadRegFromStackSlot(MachineBasicBlock &MBB,
     // GR or a GR sub-class (e.g. GR03): reload with a plain 8-byte load.
     BuildMI(MBB, MI, DL, get(IA64::LD8), DestReg).addFrameIndex(FrameIdx);
   } else if (RC == &IA64::PRRegClass) {
-    // First we load a byte from the stack into r2, our 'predicate hackery'
-    // scratch reg.
+    // Load of predicate from the stack uses IA64::r2 as a temporary register.
+    // First we load a byte from the stack into r2.
     BuildMI(MBB, MI, DL, get(IA64::LD8), IA64::r2).addFrameIndex(FrameIdx);
-    // Then we compare it to zero. If it _is_ zero, compare-not-equal to r0
-    // gives us 0, which is what we want, so that's nice.
+    // Then we compare it to zero.
     BuildMI(MBB, MI, DL, get(IA64::CMPNE), DestReg)
         .addReg(IA64::r2)
         .addReg(IA64::r0);
@@ -192,7 +192,8 @@ bool IA64InstrInfo::analyzeBranch(MachineBasicBlock &MBB,
       return false;
     }
     if (isCondBranchOpcode(LastOpc)) {
-      parseCondBranch(LastInst, TBB, Cond); // ends with fall-through cond branch
+      parseCondBranch(LastInst, TBB,
+                      Cond); // ends with fall-through cond branch
       return false;
     }
     return true; // some other terminator (e.g. indirect branch): can't analyze
@@ -256,11 +257,9 @@ unsigned IA64InstrInfo::removeBranch(MachineBasicBlock &MBB,
   return Count;
 }
 
-unsigned IA64InstrInfo::insertBranch(MachineBasicBlock &MBB,
-                                     MachineBasicBlock *TBB,
-                                     MachineBasicBlock *FBB,
-                                     ArrayRef<MachineOperand> Cond,
-                                     const DebugLoc &DL, int *BytesAdded) const {
+unsigned IA64InstrInfo::insertBranch(
+    MachineBasicBlock &MBB, MachineBasicBlock *TBB, MachineBasicBlock *FBB,
+    ArrayRef<MachineOperand> Cond, const DebugLoc &DL, int *BytesAdded) const {
   assert(!BytesAdded && "code size not handled");
   assert(TBB && "insertBranch must not be told to insert a fallthrough");
   assert(Cond.size() <= 1 &&
@@ -286,8 +285,8 @@ unsigned IA64InstrInfo::insertBranch(MachineBasicBlock &MBB,
 bool IA64InstrInfo::reverseBranchCondition(
     SmallVectorImpl<MachineOperand> &Cond) const {
   // The condition is a single qualifying predicate register. Its complement is
-  // not available -- the CMP* instructions discard the complement predicate
-  // (they write 'p0' for it) -- so the condition cannot be reversed in place.
+  // not available - the CMP* instructions discard the complement predicate
+  // (they write 'p0' for it) - so the condition cannot be reversed in place.
   // Returning true signals "cannot reverse"; callers fall back accordingly
   // (e.g. they still remove a redundant fall-through branch, which needs no
   // reversal).

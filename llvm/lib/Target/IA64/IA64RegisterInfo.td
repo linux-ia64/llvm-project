@@ -12,30 +12,26 @@
 //
 //===----------------------------------------------------------------------===//
 
-//===----------------------------------------------------------------------===//
-//  Register definitions...
-//
-
 class IA64Register<string n> : Register<n> {
   let Namespace = "IA64";
 }
 
-// GR - One of 128 64-bit general registers
+// GR - 128 64-bit general registers.
 class GR<bits<7> num, string n> : IA64Register<n> {
   let HWEncoding{6-0} = num;
 }
 
-// FP - One of 128 82-bit floating-point registers
+// FP - 128 82-bit floating-point registers.
 class FP<bits<7> num, string n> : IA64Register<n> {
   let HWEncoding{6-0} = num;
 }
 
-// PR - One of 64 1-bit predicate registers
+// PR - 64 1-bit predicate registers.
 class PR<bits<6> num, string n> : IA64Register<n> {
   let HWEncoding{5-0} = num;
 }
 
-/* general registers */
+// General Registers
 def r0 : GR< 0, "r0">, DwarfRegNum<[0]>;
 def r1 : GR< 1, "r1">, DwarfRegNum<[1]>;
 def r2 : GR< 2, "r2">, DwarfRegNum<[2]>;
@@ -165,7 +161,7 @@ def r125 : GR< 125, "r125">, DwarfRegNum<[125]>;
 def r126 : GR< 126, "r126">, DwarfRegNum<[126]>;
 def r127 : GR< 127, "r127">, DwarfRegNum<[127]>;
 
-/* floating-point registers */
+// Floating-Point Registers
 def F0 : FP< 0, "f0">, DwarfRegNum<[128]>;
 def F1 : FP< 1, "f1">, DwarfRegNum<[129]>;
 def F2 : FP< 2, "f2">, DwarfRegNum<[130]>;
@@ -295,7 +291,7 @@ def F125 : FP< 125, "f125">, DwarfRegNum<[253]>;
 def F126 : FP< 126, "f126">, DwarfRegNum<[254]>;
 def F127 : FP< 127, "f127">, DwarfRegNum<[255]>;
 
-/* predicate registers */
+// Predicate Registers
 def p0 : PR< 0, "p0">, DwarfRegNum<[256]>;
 def p1 : PR< 1, "p1">, DwarfRegNum<[257]>;
 def p2 : PR< 2, "p2">, DwarfRegNum<[258]>;
@@ -361,8 +357,9 @@ def p61 : PR< 61, "p61">, DwarfRegNum<[317]>;
 def p62 : PR< 62, "p62">, DwarfRegNum<[318]>;
 def p63 : PR< 63, "p63">, DwarfRegNum<[319]>;
 
-// XXX : this is temporary, we'll eventually have the output registers
-// in the general purpose register class too?
+// Output Registers
+// Note: These are actually aliased to specific GRs depending on the stack
+// frame; we use their assembler-provided aliases for convenience.
 def out0 : GR<0, "out0">, DwarfRegNum<[120]>;
 def out1 : GR<1, "out1">, DwarfRegNum<[121]>;
 def out2 : GR<2, "out2">, DwarfRegNum<[122]>;
@@ -372,7 +369,7 @@ def out5 : GR<5, "out5">, DwarfRegNum<[125]>;
 def out6 : GR<6, "out6">, DwarfRegNum<[126]>;
 def out7 : GR<7, "out7">, DwarfRegNum<[127]>;
 
-// application (special) registers:
+// Application Registers
 
 // "previous function state" application register
 def AR_PFS : GR<0, "ar.pfs">, DwarfRegNum<[331]>;
@@ -384,103 +381,50 @@ def AR_PFS : GR<0, "ar.pfs">, DwarfRegNum<[331]>;
 // to force the required stop between them.
 def AR_CCV : GR<0, "ar.ccv">, DwarfRegNum<[332]>;
 
-// "return pointer" (this is really branch register b0)
+// Return Pointer
+// Note: This is an assembler alias of b0 (branch registr 0).
 def rp : GR<0, "rp">, DwarfRegNum<[-1]>;
 
-// branch reg 6
+// Branch Register 6
+// Used for computing indirect branch target.
 def B6 : GR<0, "b6">, DwarfRegNum<[326]>;
 
-//===----------------------------------------------------------------------===//
-// Register Class Definitions... now that we have all of the pieces, define the
-// top-level register classes.  The order specified in the register list is
-// implicitly defined to be the register allocation order.
-//
-
-// these are the scratch (+stacked) general registers
-// FIXME/XXX  we also reserve a frame pointer (r5)
-// FIXME/XXX  we also reserve r2 for spilling/filling predicates
-// in IA64RegisterInfo.cpp
-// FIXME/XXX  we also reserve r22 for calculating addresses
-// in IA64RegisterInfo.cpp
+// Register Class Definitions.
 
 def GR : RegisterClass<"IA64", [i64], 64,
        (add
-//FIXME!: for both readability and performance, we don't want the out
-//        registers to be the first ones allocated
-
-        out7, out6, out5, out4, out3, out2, out1, out0,
-        r3,  r8,  r9,  r10, r11, r14, r15,
-        r16, r17, r18, r19, r20, r21, r23,
-        r24, r25, r26, r27, r28, r29, r30, r31,
-        r32, r33, r34, r35, r36, r37, r38, r39,
-        r40, r41, r42, r43, r44, r45, r46, r47,
-        r48, r49, r50, r51, r52, r53, r54, r55,
-        r56, r57, r58, r59, r60, r61, r62, r63,
-        r64, r65, r66, r67, r68, r69, r70, r71,
-        r72, r73, r74, r75, r76, r77, r78, r79,
-        r80, r81, r82, r83, r84, r85, r86, r87,
-        r88, r89, r90, r91, r92, r93, r94, r95,
-        r96, r97, r98, r99, r100, r101, r102, r103,
-        r104, r105, r106, r107, r108, r109, r110, r111,
-        r112, r113, r114, r115, r116, r117, r118, r119,
-        // last 16 are special (look down)
-        r120, r121, r122, r123, r124, r125, r126, r127,
-        // r4/r6/r7: the static callee-saved GRs (getCalleeSavedRegs). They trail
-        // the order so the allocator reaches them only under heavy pressure, but
-        // are class members so copyPhysReg treats them as GRs -- LowerCall parks
-        // gp/sp/rp in them across a call in a returns_twice (setjmp) function,
-        // where they survive a longjmp re-entry (glibc setjmp/longjmp save and
-        // restore them via the jmpbuf).
+        (sequence "out%u", 0, 7),
+        // skipping reserved r0, r1, r2 (see below)
+        r3,
+        // skipping callee-saved r4, r6, r7; reserved r5
+        r8, r9, r10, r11,
+        // skipping reserved r12, r13
+        (sequence "r%u", 14, 21),
+        // skipping reserved r22
+        (sequence "r%u", 23, 127),
+        // the static callee-saved GRs (getCalleeSavedRegs)
         r4, r6, r7,
+        // reserved registers
         r0, r1, r2, r5, r12, r13, r22, rp)>;
-// The pre-removal backend hid the 'out' registers and the reserved registers
-// (r0,r1,r2,r5,r12,r13,r22,rp) from the allocation order via RegisterClass
-// MethodBodies, a mechanism that no longer exists.  Those reservations are now
-// expressed in IA64RegisterInfo::getReservedRegs (ported in Phase D).
-//
-// ar.pfs (the "previous function state" application register) is deliberately
-// NOT a member of GR.  The pre-removal backend kept it in GR and excluded it
-// from the allocation order, but the modern register coalescer will then fold
-// the ar.pfs-save vreg straight into the AR_PFS physreg (yielding the
-// nonsensical 'alloc ar.pfs = ar.pfs'), because the vreg and physreg share a
-// class.  Giving ar.pfs its own class makes the 'mov ar.pfs = rN' restore a
-// cross-class copy the coalescer cannot join, so the save register stays a
-// real scratch GR.
-// 'addl r1 = imm22, r3' (A5 form) spends most of its instruction word on the
-// 22-bit immediate, leaving only a 2-bit field for its source register: that
-// operand must be one of r0-r3. GR03 is that restricted class, used for ADDL's
-// addend. Of its members r0 (zero), r1 (gp) and r2 (predicate-spill scratch)
-// are reserved by getReservedRegs, so the register allocator's only free pick
-// here is r3; r0 is still usable as an explicit operand (the 'addl rX = imm22,
-// r0' = 'mov rX = imm22' constant-materialization form). r3 leads the order so
-// it is preferred for allocation.
+
+// Restricted class of registers representable in 3 bits.
+// Used as adddend for ADDL instruction (22-bit immediate add).
 def GR03 : RegisterClass<"IA64", [i64], 64, (add r3, r2, r0, r1)>;
 
+// Application register class, for ar.pfs.
+// Used in MOV_TO_AR_PFS node.
 def AR : RegisterClass<"IA64", [i64], 64, (add AR_PFS)>;
 
-// Branch registers. b6 holds the target of an indirect (function-descriptor)
-// call; like AR it gets its own class so MOV_TO_BR can name it.
+// Branch register class, for b6.
+// Used in MOV_TO_BR node.
 def BR : RegisterClass<"IA64", [i64], 64, (add B6)>;
 
-
-// these are the scratch (+stacked) FP registers
-
 def FP : RegisterClass<"IA64", [f64, f32, f80], 128,
-       (add F6, F7,
-        F8, F9, F10, F11, F12, F13, F14, F15,
-        F32, F33, F34, F35, F36, F37, F38, F39,
-        F40, F41, F42, F43, F44, F45, F46, F47,
-        F48, F49, F50, F51, F52, F53, F54, F55,
-        F56, F57, F58, F59, F60, F61, F62, F63,
-        F64, F65, F66, F67, F68, F69, F70, F71,
-        F72, F73, F74, F75, F76, F77, F78, F79,
-        F80, F81, F82, F83, F84, F85, F86, F87,
-        F88, F89, F90, F91, F92, F93, F94, F95,
-        F96, F97, F98, F99, F100, F101, F102, F103,
-        F104, F105, F106, F107, F108, F109, F110, F111,
-        F112, F113, F114, F115, F116, F117, F118, F119,
-        F120, F121, F122, F123, F124, F125, F126, F127,
-        F0, F1)> {  // F0, F1 are hidden via getReservedRegs (Phase D)
+       (add
+        (sequence "F%u", 6, 15),
+        (sequence "F%u", 32, 127),
+        // reserved registers (constants)
+        F0, F1)> {
   // Size/alignment of 128 bits so that stf.spill / ldf.fill of full 82-bit FP
   // registers to stack slots are 16-byte aligned.
   let Size = 128;
@@ -488,31 +432,13 @@ def FP : RegisterClass<"IA64", [f64, f32, f80], 128,
 
 // An alternate view of the same physical FP registers whose sole value type is
 // f80 ('long double'). This mirrors x86's RFP80 (a single-type class layered
-// over the x87 stack registers): the generic inline-asm ISel path derives a
-// register's type from the *first* legal type of the chosen class, and the
-// multi-typed FP class above leads with f64. Routing an 80-bit value through a
-// 64-bit-typed register slot makes getCopyToParts try to truncate it and assert
-// ("Unknown mismatch!"). Returning this class for the 'f' constraint on an f80
-// value makes the representative register type f80, so the value tiles into one
-// register cleanly. (add FP) reuses FP's registers -- no new physical registers.
+// over the x87 stack registers).
+// Note: Used by inline asm.
 def FP80 : RegisterClass<"IA64", [f80], 128, (add FP)> {
   let Size = 128;
 }
 
-// these are the predicate registers, p0 (1/TRUE) is not here
 def PR : RegisterClass<"IA64", [i1], 64,
-// for now, only the scratch predicate regs
-       (add p6, p7, p8, p9, p10, p11, p12, p13, p14, p15)> {
+       (add (sequence "p%u", 6, 15))> {
   let Size = 64;
 }
-
-/*
- [p1, p2, p3, p4, p5, p6, p7,
-  p8, p9, p10, p11, p12, p13, p14, p15,
-  p16, p17, p18, p19, p20, p21, p22, p23,
-  p24, p25, p26, p27, p28, p29, p30, p31,
-  p32, p33, p34, p35, p36, p37, p38, p39,
-  p40, p41, p42, p43, p44, p45, p46, p47,
-  p48, p49, p50, p51, p52, p53, p54, p55,
-  p56, p57, p58, p59, p60, p61, p62, p63]>;
-  */

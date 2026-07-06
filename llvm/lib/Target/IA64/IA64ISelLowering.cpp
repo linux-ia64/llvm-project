@@ -8,12 +8,6 @@
 //
 // This file implements the IA64TargetLowering class.
 //
-// Scope note: LowerFormalArguments / LowerReturn (Stage 1) and LowerCall
-// (Stage C) are implemented for the integer, direct-call ABI that fib needs:
-// args in r32-r39 (incoming) / out0-out7 (outgoing), return in r8, gp/sp/rp
-// saved around calls; indirect calls go through the function descriptor
-// (entry point into b6, callee gp into r1). TLS remains deferred.
-//
 //===----------------------------------------------------------------------===//
 
 #include "IA64ISelLowering.h"
@@ -37,20 +31,18 @@
 
 using namespace llvm;
 
-// A floating-point scalar that is not long double (f64; f32 was promoted to
-// f64 earlier) occupies exactly one parameter slot. IA-64's parameter model is
-// positional: every argument, integer or FP, consumes a slot in one shared
-// sequence -- the first eight slots map to r32-r39 (incoming) / out0-out7
-// (outgoing), the rest to 8-byte stack slots. A *fixed* FP value travels in the
-// next floating-point register F8-F15, but it must still RESERVE its general
-// parameter slot so a following integer argument keeps its positional slot.
+// A floating-point scalar that is not long double occupies exactly one
+// parameter slot. IA-64's parameter model is positional: every argument,
+// integer or FP, consumes a slot in one shared sequence: the first eight slots
+// map to r32-r39 (incoming) / out0-out7 (outgoing), the rest to 8-byte stack
+// slots. A *fixed* FP value travels in the next floating-point register F8-F15,
+// but it must still reserve its general parameter slot, so that a following
+// integer argument keeps its positional slot.
 //
 // CCAssignToRegWithShadow cannot express this: it shadows the GR at the *FP
 // register's* index, so the first FP arg always shadows r32 no matter how many
 // integers preceded it, never reserving the slot the FP arg actually occupies.
-// A trailing integer then reused that slot's register -- e.g. the long long in
-// _testfunc_q_bhilfdq(b,h,i,l,f,d,q) landed in the float's slot and read back
-// the float's bit pattern instead of q.
+// A trailing integer would then reuse that slot's register.
 //
 // A *variadic* FP arg ('...' match) is passed in a general register in memory
 // format: a prototyped variadic callee reads its variable arguments out of the
@@ -60,8 +52,9 @@ using namespace llvm;
 static bool CC_IA64_FP_Common(unsigned ValNo, MVT ValVT, MVT LocVT,
                               ISD::ArgFlagsTy ArgFlags, CCState &State,
                               ArrayRef<MCPhysReg> SlotRegs) {
-  static const MCPhysReg FPRegs[] = {IA64::F8,  IA64::F9,  IA64::F10, IA64::F11,
-                                     IA64::F12, IA64::F13, IA64::F14, IA64::F15};
+  static const MCPhysReg FPRegs[] = {IA64::F8,  IA64::F9,  IA64::F10,
+                                     IA64::F11, IA64::F12, IA64::F13,
+                                     IA64::F14, IA64::F15};
   if (ArgFlags.isVarArg()) {
     if (unsigned Reg = State.AllocateReg(SlotRegs))
       State.addLoc(
@@ -83,8 +76,9 @@ static bool CC_IA64_FP_Common(unsigned ValNo, MVT ValVT, MVT LocVT,
         CCValAssign::getReg(ValNo, ValVT, FReg, LocVT, CCValAssign::Full));
     return true;
   }
-  State.addLoc(CCValAssign::getMem(
-      ValNo, ValVT, State.AllocateStack(8, Align(8)), LocVT, CCValAssign::Full));
+  State.addLoc(CCValAssign::getMem(ValNo, ValVT,
+                                   State.AllocateStack(8, Align(8)), LocVT,
+                                   CCValAssign::Full));
   return true;
 }
 
@@ -109,15 +103,16 @@ static bool CC_IA64_Call_FP(unsigned ValNo, MVT ValVT, MVT LocVT,
 }
 
 // A named (prototyped) f80 'long double' argument is passed in one FP register
-// in register format, but -- being 16 bytes -- it occupies TWO 16-byte-aligned
+// in register format, but - being 16 bytes - it occupies two 16-byte-aligned
 // (Next-Even) parameter slots, so it shadows two general registers (psABI
 // 8.5.1). A variadic long double is passed in the general registers in memory
 // format (two slots). ShadowRegs is r32-r39 (incoming) or out0-out7 (outgoing).
 static bool CC_IA64_F80_Common(unsigned ValNo, MVT ValVT, MVT LocVT,
                                ISD::ArgFlagsTy ArgFlags, CCState &State,
                                ArrayRef<MCPhysReg> ShadowRegs) {
-  static const MCPhysReg FPRegs[] = {IA64::F8,  IA64::F9,  IA64::F10, IA64::F11,
-                                     IA64::F12, IA64::F13, IA64::F14, IA64::F15};
+  static const MCPhysReg FPRegs[] = {IA64::F8,  IA64::F9,  IA64::F10,
+                                     IA64::F11, IA64::F12, IA64::F13,
+                                     IA64::F14, IA64::F15};
   // A long double (double-extended) uses the "Next Even" slot policy (psABI
   // 8.5.1, Table 8-3): it occupies two parameter slots and must START on an
   // even-numbered slot. The slot index equals the shadow-GR index for the
@@ -141,9 +136,8 @@ static bool CC_IA64_F80_Common(unsigned ValNo, MVT ValVT, MVT LocVT,
                                          CCValAssign::Full));
       else
         State.addLoc(CCValAssign::getMem(
-            ValNo, MVT::i64,
-            State.AllocateStack(8, Align(Part == 0 ? 16 : 8)), MVT::i64,
-            CCValAssign::Full));
+            ValNo, MVT::i64, State.AllocateStack(8, Align(Part == 0 ? 16 : 8)),
+            MVT::i64, CCValAssign::Full));
     }
     return true;
   }
@@ -156,10 +150,10 @@ static bool CC_IA64_F80_Common(unsigned ValNo, MVT ValVT, MVT LocVT,
         CCValAssign::getReg(ValNo, ValVT, FReg, LocVT, CCValAssign::Full));
     return true;
   }
-  // All FP argument registers used (reachable only via HFAs): pass the 16-byte
-  // value on the stack.
+  // All FP argument registers used: pass the 16-byte value on the stack.
   unsigned Off = State.AllocateStack(16, Align(16));
-  State.addLoc(CCValAssign::getMem(ValNo, ValVT, Off, LocVT, CCValAssign::Full));
+  State.addLoc(
+      CCValAssign::getMem(ValNo, ValVT, Off, LocVT, CCValAssign::Full));
   return true;
 }
 
@@ -208,7 +202,7 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
   // legal-or-custom for that operand type (DAGCombiner::visitBRCOND), and the
   // legalizer likewise queries getOperationAction by the operand type. The
   // pre-removal backend used MVT::Other, which was right for the LLVM 2.6
-  // legalizer but is now a dead no-op -- it left BR_CC/i64 at its Legal default,
+  // legalizer but is now a dead no-op - it left BR_CC/i64 at its Legal default,
   // so brcond(setcc) got folded into an unselectable br_cc. Marking i64 Expand
   // keeps brcond(setcc) intact, which is exactly what our setcc (CMP*) patterns
   // and the hand-selected BRCOND consume. (Sparc keys these by operand type
@@ -237,14 +231,15 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
   setCondCodeAction(ISD::SETONE, MVT::f32, Expand);
   setCondCodeAction(ISD::SETUEQ, MVT::f32, Expand);
 
-  // Comparing two predicates (i1): keep br_cc/select_cc as setcc + brcond/select,
-  // and custom-lower the i1 setcc to predicate logic (eq/ne -> xnor/xor).
+  // Comparing two predicates (i1): keep br_cc/select_cc as setcc +
+  // brcond/select, and custom-lower the i1 setcc to predicate logic (eq/ne ->
+  // xnor/xor).
   setOperationAction(ISD::BR_CC, MVT::i1, Expand);
   setOperationAction(ISD::SELECT_CC, MVT::i1, Expand);
   setOperationAction(ISD::SETCC, MVT::i1, Custom);
   // ...but mark the i1 eq/ne conditions Expand so the combiner's rebuildSetCC
-  // does not turn our lowered xor back into an i1 setcc (an infinite loop, since
-  // that setcc is Custom-lowered to the same xor again).
+  // does not turn our lowered xor back into an i1 setcc (an infinite loop,
+  // since that setcc is Custom-lowered to the same xor again).
   setCondCodeAction(ISD::SETEQ, MVT::i1, Expand);
   setCondCodeAction(ISD::SETNE, MVT::i1, Expand);
 
@@ -252,14 +247,11 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::UINT_TO_FP, MVT::i1, Promote);
   setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i1, Expand);
 
-  setOperationAction(ISD::FREM, MVT::f32, Expand);
-  setOperationAction(ISD::FREM, MVT::f64, Expand);
-  setOperationAction(ISD::FDIV, MVT::f32, Expand);
-  setOperationAction(ISD::FDIV, MVT::f64, Expand);
-  // f80 ('long double') has no inline divide/remainder; use the libcall
-  // (__divxf3 / fmodl). fadd/fsub/fmpy/fma are native (FADD etc.).
-  setOperationAction(ISD::FREM, MVT::f80, Expand);
-  setOperationAction(ISD::FDIV, MVT::f80, Expand);
+  // f80/f64/f32 has no hardware divide/remainder; use the libcall.
+  for (MVT VT : {MVT::f32, MVT::f64, MVT::f80}) {
+    setOperationAction(ISD::FREM, VT, Expand);
+    setOperationAction(ISD::FDIV, VT, Expand);
+  }
 
   // FP truncating stores must round first. stfs/stf8 emit fp_fr_to_mem_format,
   // which *assumes the FR was already rounded* to the destination precision --
@@ -275,7 +267,7 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
 
   // IA-64 has no native half (f16). Convert to/from f16 via the soft-float
   // libcalls (__truncsfhf2/__extendhfsf2 etc.) and never load/store f16 as an
-  // extended/truncated FP value -- it is handled as i16 bits. Mirrors SPARC.
+  // extended/truncated FP value - it is handled as i16 bits.
   // (f128 needs no such setup: with no f128 register class it is soft-floated
   // to the default libgcc __*tf3 libcalls.)
   for (MVT VT : {MVT::f32, MVT::f64, MVT::f80, MVT::f128}) {
@@ -285,7 +277,8 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
     setTruncStoreAction(VT, MVT::f16, Expand);
   }
 
-  // We don't support sin/cos/sqrt/pow (expand to libcalls: sinl/cosl/sqrtl/...).
+  // We don't support sin/cos/sqrt/pow (expand to libcalls:
+  // sinl/cosl/sqrtl/...).
   for (MVT VT : {MVT::f32, MVT::f64, MVT::f80}) {
     setOperationAction(ISD::FSIN, VT, Expand);
     setOperationAction(ISD::FCOS, VT, Expand);
@@ -306,9 +299,9 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
   // FIXME: IA64 has this (mux @rev), but it is not implemented.
   setOperationAction(ISD::BSWAP, MVT::i64, Expand);
 
-  // Use toolchain built-in for integer division
-  for (unsigned Op : {ISD::SDIV, ISD::UDIV, ISD::SREM, ISD::UREM, ISD::UDIVREM,
-                      ISD::SDIVREM})
+  // IA-64 has no native integer division, use libcall.
+  for (unsigned Op :
+       {ISD::SDIV, ISD::UDIV, ISD::SREM, ISD::UREM, ISD::UDIVREM, ISD::SDIVREM})
     setOperationAction(Op, MVT::i64, Expand);
 
   // No single instruction yields both halves of a 64x64 product; expand into a
@@ -317,20 +310,22 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::SMUL_LOHI, MVT::i64, Expand);
 
   // 128-bit shifts (i128, e.g. `core`'s checked_shl) legalize to a *_PARTS node
-  // over an i64 register pair. We have no instruction for that; mark them Expand
-  // so the integer legalizer emits the libgcc libcall (__ashlti3/__ashrti3/
+  // over an i64 register pair. We have no instruction for that; mark them
+  // Expand so the integer legalizer emits the libgcc libcall
+  // (__ashlti3/__ashrti3/
   // __lshrti3) instead, matching how we already handle 128-bit divide/modulo.
   setOperationAction(ISD::SHL_PARTS, MVT::i64, Expand);
   setOperationAction(ISD::SRA_PARTS, MVT::i64, Expand);
   setOperationAction(ISD::SRL_PARTS, MVT::i64, Expand);
 
+  // Thread-local addresses are lowered per TLS model (see
+  // LowerGlobalTLSAddress); there is no generic expansion, so it must be
+  // Custom.
+  setOperationAction(ISD::GlobalTLSAddress, MVT::i64, Custom);
+
   // va_start points the va_list at the register save area (custom); va_arg,
   // va_copy and va_end use the generic load/increment/store expansion. The
   // va_list is a plain pointer, so the default va_copy/va_end suffice.
-  // Thread-local addresses are lowered per TLS model (see LowerGlobalTLSAddress);
-  // there is no generic expansion, so it must be Custom.
-  setOperationAction(ISD::GlobalTLSAddress, MVT::i64, Custom);
-
   setOperationAction(ISD::VASTART, MVT::Other, Custom);
   setOperationAction(ISD::VAARG, MVT::Other, Expand);
   setOperationAction(ISD::VACOPY, MVT::Other, Expand);
@@ -366,27 +361,6 @@ IA64TargetLowering::IA64TargetLowering(const TargetMachine &TM,
   setMinFunctionAlignment(Align(32));
 
   computeRegisterProperties(STI.getRegisterInfo());
-
-  // Note: the pre-removal backend called addLegalFPImmediate(0/±1) here; that
-  // API was removed (FP-immediate legality is now an isFPImmLegal override).
-  // plus.ll uses no FP immediates, so this is left for a later stage.
-}
-
-const char *IA64TargetLowering::getTargetNodeName(unsigned Opcode) const {
-  switch (Opcode) {
-  default:
-    return nullptr;
-  case IA64ISD::GETFD:
-    return "IA64ISD::GETFD";
-  case IA64ISD::BRCALL:
-    return "IA64ISD::BRCALL";
-  case IA64ISD::RET_FLAG:
-    return "IA64ISD::RET_FLAG";
-  case IA64ISD::TLS_TPREL:
-    return "IA64ISD::TLS_TPREL";
-  case IA64ISD::TLS_GOTLOAD:
-    return "IA64ISD::TLS_GOTLOAD";
-  }
 }
 
 EVT IA64TargetLowering::getSetCCResultType(const DataLayout & /*DL*/,
@@ -396,8 +370,8 @@ EVT IA64TargetLowering::getSetCCResultType(const DataLayout & /*DL*/,
   return MVT::i1;
 }
 
-bool IA64TargetLowering::isFMAFasterThanFMulAndFAdd(const MachineFunction & /*MF*/,
-                                                    EVT VT) const {
+bool IA64TargetLowering::isFMAFasterThanFMulAndFAdd(
+    const MachineFunction & /*MF*/, EVT VT) const {
   // fma/fms/fnma fuse a*b+c into one single-rounding F-unit op. f32 (fma.s),
   // f64 (fma.d) and f80 (fma) each have a hardware FMA pattern, so contracting
   // fmul+fadd is profitable for them. This stays an explicit whitelist (not
@@ -409,10 +383,10 @@ bool IA64TargetLowering::isFMAFasterThanFMulAndFAdd(const MachineFunction & /*MF
 bool IA64TargetLowering::isFPImmLegal(const APFloat & /*Imm*/, EVT VT,
                                       bool /*ForCodeSize*/) const {
   // Keep f32/f64 constants out of the constant pool: we materialise them from
-  // their integer bit pattern (movl + setf.d) -- see the fpimm patterns in
+  // their integer bit pattern (movl + setf.d) - see the fpimm patterns in
   // IA64InstrInfo.td. f80 ('long double') is 80 bits and cannot be built from a
-  // single 64-bit movl, so its literals go to the constant pool (loaded by ldfe;
-  // see the ISD::ConstantPool selection in IA64ISelDAGToDAG).
+  // single 64-bit movl, so its literals go to the constant pool (loaded by
+  // ldfe; see the ISD::ConstantPool selection in IA64ISelDAGToDAG).
   return VT == MVT::f32 || VT == MVT::f64;
 }
 
@@ -449,8 +423,9 @@ SDValue IA64TargetLowering::LowerFormalArguments(
         if (RegVT.isInteger())
           ArgValue = DAG.getNode(ISD::TRUNCATE, dl, VA.getValVT(), ArgValue);
         else
-          ArgValue = DAG.getNode(ISD::FP_ROUND, dl, VA.getValVT(), ArgValue,
-                                 DAG.getIntPtrConstant(0, dl, /*isTarget=*/true));
+          ArgValue =
+              DAG.getNode(ISD::FP_ROUND, dl, VA.getValVT(), ArgValue,
+                          DAG.getIntPtrConstant(0, dl, /*isTarget=*/true));
       }
 
       InVals.push_back(ArgValue);
@@ -458,12 +433,12 @@ SDValue IA64TargetLowering::LowerFormalArguments(
       // The argument arrives on the stack. Per the psABI (§8.5.3) parameter
       // slot 8 is at sp+16, slot 9 at sp+24, and so on (the 16-byte scratch
       // area sits below at [sp, sp+16)). This holds whether or not the function
-      // is variadic -- the variadic register-home spill area is carved out of
+      // is variadic - the variadic register-home spill area is carved out of
       // *this* frame and the scratch area, not reserved by the caller (see the
       // spill loop below).
       assert(VA.isMemLoc() && "unexpected argument location");
-      int FI = MF.getFrameInfo().CreateFixedObject(
-          8, 16 + VA.getLocMemOffset(), /*IsImmutable=*/true);
+      int FI = MF.getFrameInfo().CreateFixedObject(8, 16 + VA.getLocMemOffset(),
+                                                   /*IsImmutable=*/true);
       SDValue FIN = DAG.getFrameIndex(FI, getPointerTy(DAG.getDataLayout()));
       InVals.push_back(
           DAG.getLoad(VA.getValVT(), dl, Chain, FIN, MachinePointerInfo()));
@@ -477,7 +452,7 @@ SDValue IA64TargetLowering::LowerFormalArguments(
   // in0-in5 into up to 48 bytes at the base of its own frame, just below sp.
   // This places parameter slot i at offset 8*i - 48 from the incoming sp:
   // slot6 -> sp+0, slot7 -> sp+8, slot8 (first stack arg) -> sp+16, slot9 ->
-  // sp+24, ... -- one contiguous ascending block running from the frame base up
+  // sp+24, ... - one contiguous ascending block running from the frame base up
   // into the caller's memory arguments. A va_list is just an ascending pointer,
   // so it walks out of the register homes straight into the stack arguments.
   // (CreateFixedObject offsets are relative to the incoming sp; negative
@@ -506,10 +481,10 @@ SDValue IA64TargetLowering::LowerFormalArguments(
     // All eight GP slots named: no register varargs, so va_start points at the
     // first unnamed stack slot. That is slot 8 (sp+16) only when there are no
     // *named* stack arguments; if the prototype has named parameters beyond the
-    // eight register slots (e.g. Links' input_field: 8 register params + 4 named
-    // stack args + ...), the unnamed args begin after them, at
-    // sp + 16 + <bytes of named stack args>. CCInfo.getStackSize() is exactly
-    // those bytes (the formals were just analyzed above).
+    // eight register slots (e.g. Links' input_field: 8 register params + 4
+    // named stack args + ...), the unnamed args begin after them, at sp + 16 +
+    // <bytes of named stack args>. CCInfo.getStackSize() is exactly those bytes
+    // (the formals were just analyzed above).
     if (FirstVar == 8)
       VAFI = MFI.CreateFixedObject(8, 16 + CCInfo.getStackSize(),
                                    /*IsImmutable=*/true);
@@ -518,9 +493,9 @@ SDValue IA64TargetLowering::LowerFormalArguments(
       Chain = DAG.getNode(ISD::TokenFactor, dl, MVT::Other, Stores);
   }
 
-  // 'alloc' (which captures the caller's ar.pfs) and its restore are now emitted
+  // 'alloc' (which captures the caller's ar.pfs) and its restore are emitted
   // entirely by frame lowering into a reserved stacked local, so there is
-  // nothing to materialise here. See IA64FrameLowering::emitPrologue.
+  // nothing more to materialise here. See IA64FrameLowering::emitPrologue.
   return Chain;
 }
 
@@ -555,9 +530,9 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   // Record how many output registers this call needs; the prologue 'alloc'
   // sizes its output region from the max over all of the function's calls.
   // Count the actually-allocated out registers rather than the argument count:
-  // an FP argument shadows (consumes) its parameter slot(s) without occupying an
-  // out register for the value, while a long double (f80) shadows *two* out
-  // slots -- so a trailing integer arg can land in a higher out register than
+  // an FP argument shadows (consumes) its parameter slot(s) without occupying
+  // an out register for the value, while a long double (f80) shadows *two* out
+  // slots - so a trailing integer arg can land in a higher out register than
   // the plain argument count would suggest.
   static const MCPhysReg OutRegs[] = {IA64::out0, IA64::out1, IA64::out2,
                                       IA64::out3, IA64::out4, IA64::out5,
@@ -571,13 +546,14 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
 
   Chain = DAG.getCALLSEQ_START(Chain, NumBytes, 0, dl);
 
-  // An indirect callee is a function pointer: not a GlobalAddress/ExternalSymbol
-  // but an ordinary i64 value pointing at a function descriptor { entry, gp }.
-  // Read the descriptor here, while Chain is still a plain (unglued) chain and
-  // before the gp save below latches the caller's r1; the entry point and the
-  // callee's gp are installed into b6 / r1 just before the call further down.
-  bool IsIndirect = !isa<GlobalAddressSDNode>(Callee) &&
-                    !isa<ExternalSymbolSDNode>(Callee);
+  // An indirect callee is a function pointer: not a
+  // GlobalAddress/ExternalSymbol but an ordinary i64 value pointing at a
+  // function descriptor { entry, gp }. Read the descriptor here, while Chain is
+  // still a plain (unglued) chain and before the gp save below latches the
+  // caller's r1; the entry point and the callee's gp are installed into b6 / r1
+  // just before the call further down.
+  bool IsIndirect =
+      !isa<GlobalAddressSDNode>(Callee) && !isa<ExternalSymbolSDNode>(Callee);
   SDValue EntryPoint, NewGp;
   if (IsIndirect) {
     EntryPoint = DAG.getLoad(MVT::i64, dl, Chain, Callee, MachinePointerInfo());
@@ -599,17 +575,11 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
     // the argument number diverge.
     SDValue Arg = OutVals[VA.getValNo()];
 
-    // By-value aggregate argument. The psABI passes aggregates by value; the
-    // frontend models this as a `byval` pointer to the caller's object and
-    // expects the callee to receive a pointer to a *private copy*. We currently
-    // realize that copy here (the callee then dereferences the pointer as usual)
-    // rather than flattening the aggregate into parameter slots/GRs -- that full
-    // ABI is still TODO (see struct-value-abi.md). The copy is mandatory: without
-    // it the argument aliases caller memory, and a callee that mutates or frees
-    // that memory corrupts the caller. Concretely, glibc regex's re_dfa_add_node
-    // takes an re_token_t by value and `realloc`s the very dfa->nodes array a
-    // by-value `dfa->nodes[org_idx]` argument points into -- so the un-copied
-    // pointer dangled into the freed block and read back garbage.
+    // By-value aggregate argument: byval passes a pointer to the caller's
+    // object, but the callee must receive a pointer to a *private copy* it can
+    // freely modify. Materialize that copy here and pass its address; the copy
+    // is mandatory, or the argument would alias caller memory and a callee that
+    // mutates or frees it would corrupt the caller.
     ISD::ArgFlagsTy Flags = Outs[VA.getValNo()].Flags;
     if (Flags.isByVal()) {
       unsigned Size = Flags.getByValSize();
@@ -636,7 +606,7 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
       CCValAssign &VAHi = ArgLocs[i + 1];
 
       // Both halves land on the outgoing stack: store the long double straight
-      // to its parameter slot with stfe (memory format) -- no register
+      // to its parameter slot with stfe (memory format) - no register
       // round-trip. (The two slots are adjacent, so one 10-byte stfe covers the
       // significant bytes; the callee's va_arg reads it back with ldfe.) The
       // spill-and-reload path below would only DAGCombine down to this if the
@@ -646,15 +616,15 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
         SDValue Addr = DAG.getNode(ISD::ADD, dl, MVT::i64,
                                    DAG.getRegister(IA64::r12, MVT::i64),
                                    DAG.getIntPtrConstant(Off, dl));
-        MemOpChains.push_back(DAG.getStore(Chain, dl, Arg, Addr,
-                                           MachinePointerInfo::getStack(MF, Off)));
+        MemOpChains.push_back(DAG.getStore(
+            Chain, dl, Arg, Addr, MachinePointerInfo::getStack(MF, Off)));
         ++i; // consumed both part-locations
         continue;
       }
 
       // At least one half goes in a general register: spill to a 16-byte
       // temporary with stfe and reload the two 8-byte memory-format halves
-      // (ld8) into the assigned slots -- the in-memory image the callee's
+      // (ld8) into the assigned slots - the in-memory image the callee's
       // va_arg reconstructs with ldfe. (There is no register instruction to
       // extract the 80-bit *memory* format into GRs, so the spill is required.)
       int FI = MF.getFrameInfo().CreateStackObject(16, Align(16), false);
@@ -680,8 +650,9 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
           SDValue Addr = DAG.getNode(ISD::ADD, dl, MVT::i64,
                                      DAG.getRegister(IA64::r12, MVT::i64),
                                      DAG.getIntPtrConstant(Off, dl));
-          MemOpChains.push_back(DAG.getStore(
-              Chain, dl, Half[Part], Addr, MachinePointerInfo::getStack(MF, Off)));
+          MemOpChains.push_back(
+              DAG.getStore(Chain, dl, Half[Part], Addr,
+                           MachinePointerInfo::getStack(MF, Off)));
         }
       }
       ++i; // consumed both part-locations
@@ -717,10 +688,10 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
     } else {
       // Arguments beyond out0-out7 are passed on the outgoing stack, just above
       // the 16-byte scratch area: parameter slot 8 at sp+16, slot 9 at sp+24,
-      // ... (psABI §8.5.3) -- the same layout LowerFormalArguments reads
-      // incoming stack arguments from. The store is sp-relative: with a reserved
-      // call frame (no variable-sized objects) sp is constant here; otherwise
-      // the call-frame pseudos adjust it around the call.
+      // ... (psABI §8.5.3) - the same layout LowerFormalArguments reads
+      // incoming stack arguments from. The store is sp-relative: with a
+      // reserved call frame (no variable-sized objects) sp is constant here;
+      // otherwise the call-frame pseudos adjust it around the call.
       assert(VA.isMemLoc() && "argument neither in register nor on the stack");
       unsigned Off = 16 + VA.getLocMemOffset();
       SDValue StackPtr = DAG.getRegister(IA64::r12, MVT::i64);
@@ -748,15 +719,16 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   // overwrite b0, but frame lowering already parks the incoming rp once in a
   // stacked local for the whole function (IA64FrameLowering::emitPrologue) and
   // the epilogue restores b0 from it, so our br.ret returns correctly no matter
-  // how many calls clobber rp in between -- the per-call save was redundant.
+  // how many calls clobber rp in between - the per-call save was redundant.
   // Worse, it was actively wrong: rp is a member of the GR class (so that
   // 'mov rN = rp' works), the save value was live across the call and coalesced
   // into the physical rp, and the spiller then spilled it with a plain
-  // 'st8 [slot] = rp' / 'ld8 rp = [slot]'. That is illegal -- st8/ld8 require a
-  // general register, not the branch register b0 -- and gas rejects it
+  // 'st8 [slot] = rp' / 'ld8 rp = [slot]'. That is illegal - st8/ld8 require a
+  // general register, not the branch register b0 - and gas rejects it
   // ("Operand N of st8/ld8 should be a general register"). The only place rp is
-  // still read around a call is the returns_twice path below, where it is parked
-  // into the CSR r7 *before* the call and so is never live across it as b0.
+  // still read around a call is the returns_twice path below, where it is
+  // parked into the CSR r7 *before* the call and so is never live across it as
+  // b0.
   SDValue InGlue;
   SDValue GPSave = DAG.getCopyFromReg(Chain, dl, IA64::r1, MVT::i64, InGlue);
   Chain = GPSave.getValue(1);
@@ -766,20 +738,23 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   InGlue = SPSave.getValue(2);
 
   // In a function that calls setjmp (and so may be re-entered by longjmp), the
-  // save vregs above cannot be allowed to land in stacked locals: longjmp brings
-  // the stacked frame back only to its last-written values, and the register
-  // allocator reuses the save register right after the (singly-modeled) restore
-  // -- which sits before the setjmp-result branch, i.e. exactly the longjmp
-  // re-entry point -- so the restored value is garbage (observed: gp = 0, then a
-  // stale slot address). Park gp/sp/rp instead in the static callee-saved
-  // registers r4/r6/r7, which glibc's setjmp/longjmp save and restore through the
-  // jmpbuf: on a longjmp re-entry they come back holding the setjmp-time
-  // gp/sp/rp, and any reuse after the restore is harmless because longjmp
-  // overwrites it. Because they are true CSRs (getCalleeSavedRegs), a nested
-  // setjmp call saves and restores them, so it cannot clobber an outer frame's
-  // parked values. The restore below reads them back out of r4/r6/r7. Reading rp
-  // here is safe (it is parked into r7, a GR, before the call -- never spilled as
-  // b0 across the call).
+  // save vregs above cannot be allowed to land in stacked locals: longjmp
+  // brings the stacked frame back only to its last-written values, and the
+  // register allocator reuses the save register right after the
+  // (singly-modeled) restore
+  // - which sits before the setjmp-result branch, i.e. exactly the longjmp
+  // re-entry point - so the restored value is garbage.
+  //
+  // Park gp/sp/rp instead in the static callee-saved registers r4/r6/r7, which
+  // glibc's setjmp/longjmp save and restore through the jmpbuf: on a longjmp
+  // re-entry they come back holding the setjmp-time gp/sp/rp, and any reuse
+  // after the restore is harmless, because longjmp overwrites it.
+  //
+  // Because they are true CSRs (getCalleeSavedRegs), a nested setjmp call saves
+  // and restores them, so it cannot clobber an outer frame's parked values. The
+  // restore below reads them back out of r4/r6/r7. Reading rp here is safe (it
+  // is parked into r7, a GR, before the call - never spilled as b0 across the
+  // call).
   bool ReturnsTwice = MF.exposesReturnsTwice();
   SDValue RPSave;
   if (ReturnsTwice) {
@@ -794,7 +769,8 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
     InGlue = Chain.getValue(1);
   }
 
-  // Copy the outgoing arguments into their out registers, glued before the call.
+  // Copy the outgoing arguments into their out registers, glued before the
+  // call.
   for (auto &R : RegsToPass) {
     Chain = DAG.getCopyToReg(Chain, dl, R.first, R.second, InGlue);
     InGlue = Chain.getValue(1);
@@ -826,11 +802,11 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   Chain = DAG.getNode(IA64ISD::BRCALL, dl, NodeTys, Ops);
   InGlue = Chain.getValue(1);
 
-  // Restore gp/sp after the call. For a returns_twice function read gp/sp/rp back
-  // out of r4/r6/r7 (longjmp-safe, see the save above) and reinstate rp from r7
-  // (a plain GR->GR copy, never spilled as b0); otherwise restore gp/sp from the
-  // save vregs directly. The common path needs no rp restore -- frame lowering
-  // owns the function's return pointer (see the save block above).
+  // Restore gp/sp after the call. For a returns_twice function read gp/sp/rp
+  // back out of r4/r6/r7 (longjmp-safe, see the save above) and reinstate rp
+  // from r7 (a plain GR->GR copy, never spilled as b0); otherwise restore gp/sp
+  // from the save vregs directly. The common path needs no rp restore - frame
+  // lowering owns the function's return pointer (see the save block above).
   if (ReturnsTwice) {
     GPSave = DAG.getCopyFromReg(Chain, dl, IA64::r4, MVT::i64, InGlue);
     Chain = GPSave.getValue(1);
@@ -846,7 +822,8 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   InGlue = Chain.getValue(1);
   Chain = DAG.getCopyToReg(Chain, dl, IA64::r12, SPSave, InGlue);
   InGlue = Chain.getValue(1);
-  // rp last (only for returns_twice), preserving the gp -> sp -> rp restore order.
+  // rp last (only for returns_twice), preserving the gp -> sp -> rp restore
+  // order.
   if (ReturnsTwice) {
     Chain = DAG.getCopyToReg(Chain, dl, IA64::rp, RPSave, InGlue);
     InGlue = Chain.getValue(1);
@@ -893,7 +870,8 @@ SDValue IA64TargetLowering::LowerOperation(SDValue Op,
                          "not supported");
     MachineFunction &MF = DAG.getMachineFunction();
     MF.getFrameInfo().setFrameAddressIsTaken(true);
-    Register FrameReg = MF.getSubtarget().getRegisterInfo()->getFrameRegister(MF);
+    Register FrameReg =
+        MF.getSubtarget().getRegisterInfo()->getFrameRegister(MF);
     return DAG.getCopyFromReg(DAG.getEntryNode(), SDLoc(Op), FrameReg,
                               Op.getValueType());
   }
@@ -904,8 +882,8 @@ SDValue IA64TargetLowering::LowerOperation(SDValue Op,
     // (xor then invert via xor with 1). Booleans only ever use eq/ne.
     SDLoc dl(Op);
     ISD::CondCode CC = cast<CondCodeSDNode>(Op.getOperand(2))->get();
-    SDValue Xor = DAG.getNode(ISD::XOR, dl, MVT::i1, Op.getOperand(0),
-                              Op.getOperand(1));
+    SDValue Xor =
+        DAG.getNode(ISD::XOR, dl, MVT::i1, Op.getOperand(0), Op.getOperand(1));
     if (CC == ISD::SETNE)
       return Xor;
     if (CC == ISD::SETEQ)
@@ -990,11 +968,12 @@ SDValue IA64TargetLowering::LowerGlobalTLSAddress(SDValue Op,
   }
   case TLSModel::GeneralDynamic:
   case TLSModel::LocalDynamic: {
-    // Call __tls_get_addr(module, offset): the two arguments are loaded from the
+    // Call __tls_get_addr(module, offset): the two arguments are loaded from
+    // the
     // @ltoff(@dtpmod)/@ltoff(@dtprel) GOT slots, and the call returns the
     // variable's address. (Local-dynamic is lowered identically to
-    // general-dynamic -- one call per access using the variable's own
-    // dtpmod/dtprel -- which is correct, just without the LDM module-base
+    // general-dynamic - one call per access using the variable's own
+    // dtpmod/dtprel - which is correct, just without the LDM module-base
     // sharing optimization.) IA-64's __tls_get_addr takes the two scalars
     // directly (out0/out1), not a pointer to a tls_index struct.
     SDValue ModSym = DAG.getTargetGlobalAddress(GV, dl, PtrVT, /*offset=*/0,
@@ -1024,11 +1003,12 @@ SDValue IA64TargetLowering::LowerGlobalTLSAddress(SDValue Op,
   llvm_unreachable("Unknown TLS model");
 }
 
-SDValue IA64TargetLowering::LowerReturn(
-    SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
-    const SmallVectorImpl<ISD::OutputArg> &Outs,
-    const SmallVectorImpl<SDValue> &OutVals, const SDLoc &dl,
-    SelectionDAG &DAG) const {
+SDValue
+IA64TargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
+                                bool isVarArg,
+                                const SmallVectorImpl<ISD::OutputArg> &Outs,
+                                const SmallVectorImpl<SDValue> &OutVals,
+                                const SDLoc &dl, SelectionDAG &DAG) const {
   MachineFunction &MF = DAG.getMachineFunction();
 
   SmallVector<CCValAssign, 16> RVLocs;
@@ -1063,8 +1043,8 @@ SDValue IA64TargetLowering::LowerReturn(
   return DAG.getNode(IA64ISD::RET_FLAG, dl, MVT::Other, RetOps);
 }
 
-void IA64TargetLowering::AdjustInstrPostInstrSelection(MachineInstr &MI,
-                                                       SDNode * /*Node*/) const {
+void IA64TargetLowering::AdjustInstrPostInstrSelection(
+    MachineInstr &MI, SDNode * /*Node*/) const {
   unsigned Opc = MI.getOpcode();
   if (Opc != IA64::BRCALL_IPREL_GA && Opc != IA64::BRCALL_IPREL_ES)
     return;
@@ -1072,12 +1052,12 @@ void IA64TargetLowering::AdjustInstrPostInstrSelection(MachineInstr &MI,
   // gp (r1) is caller-saved at any call that is *not* provably local to this
   // load module: such a call may be resolved through an import stub that loads
   // the callee's own gp, and whether that happens is a static-vs-dynamic
-  // linking decision we cannot see at compile time -- so we must conservatively
+  // linking decision we cannot see at compile time - so we must conservatively
   // assume it does. Marking the call as defining r1 keeps the gp save/restore
   // LowerCall emits from being coalesced away (the same mechanism as rp/b0).
   //
   // A dso_local callee (e.g. a recursive self-call) keeps gp, so we leave it
-  // alone and the redundant save/restore folds away -- no per-call gp churn.
+  // alone and the redundant save/restore folds away - no per-call gp churn.
   // (LTO could later prove more callees local and drop the clobber.)
   //
   // The call's only explicit operand (0) is the target: a GlobalAddress (direct
@@ -1089,21 +1069,19 @@ void IA64TargetLowering::AdjustInstrPostInstrSelection(MachineInstr &MI,
         MachineOperand::CreateReg(IA64::r1, /*isDef=*/true, /*isImp=*/true));
 
   // A returns_twice callee on IA-64 cannot preserve the caller's stacked
-  // register frame (r32-r127). The two cases that matter -- setjmp/longjmp and
-  // vfork -- both leave the caller's stacked registers holding something other
+  // register frame (r32-r127). The two cases that matter - setjmp/longjmp and
+  // vfork - both leave the caller's stacked registers holding something other
   // than their call-time values: vfork in particular runs the child in the
   // parent's address space while the parent is blocked, so the child's use of
   // the shared register backing store overwrites the parent's stacked locals
-  // (observed: an 'interp' argument parked in r32 reads back as 0 -- the value
-  // the vfork child stored there -- in Tcl's TclpCreateProcess, freeing a
-  // non-heap pointer). The static callee-saved registers r4-r7 are not in the
-  // backing store and survive (the kernel restores them from the parent's saved
-  // context); only the RSE-backed stacked registers are unsafe.
+  // The static callee-saved registers r4-r7 are not in the backing store and
+  // survive (the kernel restores them from the parent's saved context); only
+  // the RSE-backed stacked registers are unsafe.
   //
-  // The fixed BRCALL clobber list deliberately omits r32-r127 because an
-  // ordinary call *does* preserve the caller's frame via the RSE. For a
-  // returns_twice call we must additionally mark every stacked register clobbered
-  // so the allocator keeps nothing live across the call there -- such values are
+  // The BRCALL clobber list deliberately omits r32-r127 because an ordinary
+  // call *does* preserve the caller's frame via the RSE. For a returns_twice
+  // call, we must additionally mark every stacked register clobbered, so that
+  // the allocator keeps nothing live across the call there - such values are
   // forced into r4-r7 or spilled to memory (which the child does not touch),
   // exactly as GCC's 'calls_setjmp' handling requires. This complements the
   // gp/sp/rp parking LowerCall already does for returns_twice functions.
@@ -1113,7 +1091,8 @@ void IA64TargetLowering::AdjustInstrPostInstrSelection(MachineInstr &MI,
   // register as used, which IA64FrameLowering would then size the 'alloc' frame
   // around (ballooning it to the 96-register maximum). A regmask is tested
   // separately and is skipped by the frame-sizing scan (isPhysRegUsed's
-  // SkipRegMaskTest), so it constrains the allocator without inflating the frame.
+  // SkipRegMaskTest), so it constrains the allocator without inflating the
+  // frame.
   const Function *Callee =
       Target.isGlobal() ? dyn_cast<Function>(Target.getGlobal()) : nullptr;
   if (Callee && Callee->hasFnAttribute(Attribute::ReturnsTwice)) {
@@ -1123,7 +1102,8 @@ void IA64TargetLowering::AdjustInstrPostInstrSelection(MachineInstr &MI,
     // A set bit means "preserved"; allocateRegMask zero-inits (clobber all), so
     // mark everything preserved and then clear just the stacked GPRs. The fixed
     // Defs above keep clobbering the caller-saved set on top of this mask.
-    for (unsigned I = 0, E = MachineOperand::getRegMaskSize(NumRegs); I != E; ++I)
+    for (unsigned I = 0, E = MachineOperand::getRegMaskSize(NumRegs); I != E;
+         ++I)
       Mask[I] = ~0u;
     // Register 0 is NoRegister, not a physical register: it must stay clobbered
     // (bit clear), or regmask consumers that expand preserved bits to reg units
@@ -1162,9 +1142,9 @@ IA64TargetLowering::getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
   if (Constraint.size() == 1) {
     switch (Constraint[0]) {
     case 'r':
-      // Any integer value (including the i1 a Rust bool / black_box produces)
-      // lives in a general register. The GR class only carries i64, so the
-      // generic exact-type search fails for the narrower types; map them here.
+      // Any integer value lives in a general register. The GR class only
+      // carries i64, so the generic exact-type search fails for the narrower
+      // types; map them here.
       if (VT.isInteger() || VT == MVT::Other)
         return std::make_pair(0U, &IA64::GRRegClass);
       break;

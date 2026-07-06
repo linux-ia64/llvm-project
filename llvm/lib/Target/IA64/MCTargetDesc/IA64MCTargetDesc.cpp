@@ -8,16 +8,17 @@
 //
 // This file provides IA64 specific target descriptions.
 //
-// The generated Targets.def emits LLVM_TARGET(IA64), so InitializeAllTargetMCs()
-// references LLVMInitializeIA64TargetMC(). By convention this entry point lives
-// in the target's "Desc" library (LLVMIA64Desc), which object-file tools such
-// as llvm-ar link via AllTargetsDescs.
+// The generated Targets.def emits LLVM_TARGET(IA64), so
+// InitializeAllTargetMCs() references LLVMInitializeIA64TargetMC(). By
+// convention this entry point lives in the target's "Desc" library
+// (LLVMIA64Desc), which object-file tools such as llvm-ar link via
+// AllTargetsDescs.
 //
 // This registers the full MC component set for the asm-output path: MCAsmInfo
 // (replacing the pre-removal IA64TargetAsmInfo), MCInstrInfo (the instruction
 // table also backs IA64InstrInfo's generated constructor), MCRegisterInfo,
 // MCInstPrinter and MCSubtargetInfo. The object-emission components
-// (MCCodeEmitter / MCAsmBackend / ELFObjectWriter) remain out of Stage-1 scope.
+// (MCCodeEmitter / MCAsmBackend / ELFObjectWriter) are not implemented yet.
 //
 //===----------------------------------------------------------------------===//
 
@@ -95,12 +96,10 @@ static MCSubtargetInfo *createIA64MCSubtargetInfo(const Triple &TT,
   return createIA64MCSubtargetInfoImpl(TT, CPU, /*TuneCPU=*/CPU, FS);
 }
 
-extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void
-LLVMInitializeIA64TargetMC() {
+extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeIA64TargetMC() {
   Target &T = getTheIA64Target();
 
-  // Register the MC asm info (replaces the pre-removal IA64TargetAsmInfo /
-  // ELFTargetAsmInfo).
+  // Register the MC asm info.
   RegisterMCAsmInfoFn X(T, createIA64MCAsmInfo);
 
   // Register the MC instruction info (the table also backs IA64InstrInfo).

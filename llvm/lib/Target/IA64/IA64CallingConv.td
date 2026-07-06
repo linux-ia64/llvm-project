@@ -6,10 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This describes the calling conventions for the IA-64 architecture. The
-// pre-removal backend hand-coded this logic in IA64ISelLowering; modern LLVM
-// expresses it as CCState-driven tables, so the equivalent mapping is captured
-// here and consumed via -gen-callingconv.
+// This describes the calling conventions for the IA-64 architecture.
 //
 //===----------------------------------------------------------------------===//
 
@@ -44,7 +41,7 @@ def CC_IA64 : CallingConv<[
 ]>;
 
 //===----------------------------------------------------------------------===//
-// IA-64 C *outgoing* (caller-side) argument convention.
+// IA-64 C outgoing (caller-side) argument convention.
 //
 // A caller places arguments in its output registers out0-out7, which the
 // callee's 'alloc' renames into that callee's incoming r32+. This mirrors
@@ -69,7 +66,7 @@ def CC_IA64_Call : CallingConv<[
   // FP scalars (f64; f32 promoted above): one positional output slot each. A
   // fixed arg goes in F8-F15 while reserving its output GR slot; a variadic arg
   // ('...' match) goes in the output GR slot in memory format (prototyped-
-  // variadic psABI 8.5.4) -- LowerCall bit-casts it to its i64 pattern. The hook
+  // variadic psABI 8.5.4) - LowerCall bit-casts it to its i64 pattern. The hook
   // reserves the slot positionally, which CCAssignToRegWithShadow cannot do.
   CCIfType<[f64], CCCustom<"CC_IA64_Call_FP">>,
 
@@ -80,10 +77,11 @@ def CC_IA64_Call : CallingConv<[
 // IA-64 C return-value convention.
 //===----------------------------------------------------------------------===//
 def RetCC_IA64 : CallingConv<[
+  // FIXME: Extend 8 and 16-bit values to 32 bits, per psABI Section 8.6.
   CCIfType<[i1, i8, i16, i32], CCPromoteToType<i64>>,
 
   // Scalar integers/pointers return in r8 (65-128 bits in r8,r9). Aggregates up
-  // to 256 bits are returned by value in r8-r11 -- clang coerces them to an
+  // to 256 bits are returned by value in r8-r11 - clang coerces them to an
   // [N x i64] whose elements land here in order (psABI Table 8-2). Aggregates
   // larger than 256 bits are returned via a caller buffer whose address is
   // passed in r8 (sret; see CCIfSRet in the argument conventions).

@@ -24,9 +24,7 @@
 using namespace llvm;
 
 // hasFP - Return true if the specified function should have a dedicated frame
-// pointer register. (The pre-removal backend also forced this off
-// -fomit-frame-pointer; that global is gone, so we only key off var-sized
-// objects.)
+// pointer register.
 bool IA64FrameLowering::hasFPImpl(const MachineFunction &MF) const {
   return MF.getFrameInfo().hasVarSizedObjects();
 }
@@ -44,11 +42,11 @@ void IA64FrameLowering::emitPrologue(MachineFunction &MF,
   unsigned NumStackedGPRsUsed = 0;
   for (unsigned i = 0; i != IA64NumStackedGPRs; ++i) {
     // SkipRegMaskTest: count a stacked register only if it is really allocated
-    // to a value here, not merely clobbered by a call's regmask. A returns_twice
-    // (vfork/setjmp) call carries a regmask clobbering all of r32-r127 (see
-    // IA64TargetLowering::AdjustInstrPostInstrSelection) to keep values out of
-    // the RSE-backed frame across it; without skipping the mask that would size
-    // this 'alloc' to the full 96-register frame.
+    // to a value here, not merely clobbered by a call's regmask. A
+    // returns_twice (vfork/setjmp) call carries a regmask clobbering all of
+    // r32-r127 (see IA64TargetLowering::AdjustInstrPostInstrSelection) to keep
+    // values out of the RSE-backed frame across it; without skipping the mask
+    // that would size this 'alloc' to the full 96-register frame.
     if (MF.getRegInfo().isPhysRegUsed(getIA64StackedGPR(i),
                                       /*SkipRegMaskTest=*/true))
       NumStackedGPRsUsed = i + 1; // i+1, not ++ - consider fn(fp, fp, int)
@@ -59,38 +57,17 @@ void IA64FrameLowering::emitPrologue(MachineFunction &MF,
   IA64FunctionInfo *FInfo = MF.getInfo<IA64FunctionInfo>();
 
   // Park the caller's ar.pfs in a fixed stacked local for the whole function.
-  // 'alloc' writes the incoming ar.pfs into its destination register, and every
-  // function must restore that value before br.ret so the register stack engine
-  // can recover the caller's frame. Make the destination a fresh stacked local
-  // just above the ones the allocator used: a register stack engine local is
-  // preserved across calls for free, and because the allocator never sees this
-  // register it is never spilled -- so the value stays in one place that the
-  // unwinder can name in a single '.save ar.pfs, <reg>' directive valid for the
-  // entire body.
-  //
-  // The old backend instead let the allocator place the ar.pfs-save value (via
-  // PSEUDO_ALLOC). In a non-leaf function the allocator spilled that value to a
-  // stack slot across calls and reused the register, so '.save ar.pfs, <reg>'
-  // named a register that no longer held ar.pfs at the call sites. That was
-  // invisible to gdb's read-only backtrace (which only needs the return address
-  // from '.save rp') but crashed libgcc's forced unwinder (pthread_exit /
-  // pthread_cancel), which must actually restore ar.pfs to pop the RSE frame.
+  // This simplifies the annotations for gas to generate unwind information
+  // (emitted later in IA64AsmPrinter): a single '.save ar.pfs, <reg>' directive
+  // is valid for the entire body.
   Register SavedPFSReg = getIA64StackedGPR(NumStackedGPRsUsed);
   ++NumStackedGPRsUsed;
   FInfo->setSavedPFSReg(SavedPFSReg);
 
   // For a non-leaf function, br.call overwrites the return pointer (b0/rp), so
-  // we must preserve the caller's return address for our own br.ret. The
-  // register allocator already does this lazily -- it copies rp into a stacked
-  // local around each call -- but those copies land in a different register at
-  // each call site, so there is no single location the unwinder can name. Park
-  // rp once here, in a fresh stacked local (just like ar.pfs above), so the
-  // frame is describable by one '.save rp, <reg>' directive. emitEpilogue
-  // restores b0 from it.
-  //
-  // hasCalls() is the right test: it covers libcalls (e.g. the __divdi3 a sdiv
-  // lowers to) that clobber rp without any IR-level call, which a check earlier
-  // than frame lowering could not see.
+  // we must preserve the caller's return address for our own br.ret.
+  // A static register is picked deliberately for the entire function body to
+  // simplify unwinding (see above).
   Register SavedRPReg;
   if (MFI.hasCalls()) {
     SavedRPReg = getIA64StackedGPR(NumStackedGPRsUsed);
@@ -98,8 +75,8 @@ void IA64FrameLowering::emitPrologue(MachineFunction &MF,
     FInfo->setSavedRPReg(SavedRPReg);
   }
 
-  // The whole stacked frame -- locals (the allocator's plus our ar.pfs/rp saves)
-  // and the outputs (out0-out7, placed by gas above the locals) -- must fit in
+  // The whole stacked frame - locals (the allocator's plus our ar.pfs/rp saves)
+  // and the outputs (out0-out7, placed by gas above the locals) - must fit in
   // the 96-register window. getReservedRegs guarantees this by capping the
   // allocator's locals: it reserves the top 10 stacked GPRs (8 outputs + the rp
   // save + the ar.pfs save).
@@ -108,16 +85,14 @@ void IA64FrameLowering::emitPrologue(MachineFunction &MF,
 
   // 'alloc' must be the first instruction in the function; its destination is
   // the parked ar.pfs local. Mark that operand as a Define: 'alloc' writes the
-  // caller's ar.pfs into it, and the bundling pass needs to see that write so it
-  // inserts the mandatory stop before any instruction that reads the register --
-  // notably the epilogue's 'mov ar.pfs = <reg>'. (Using 'alloc's result, or any
-  // register it renames, in the same instruction group is illegal and faults
-  // with SIGILL.) The old backend's PSEUDO_ALLOC supplied this def; without it,
-  // a use of the addReg default would leave 'alloc' looking like a reader.
-  //
-  // Tag it (and the rest of the prologue below) as frame setup so the asm
-  // printer can hang the IA-64 unwind directives (.prologue / .save ar.pfs /
-  // .save rp / .fframe) off the right instructions.
+  // caller's ar.pfs into it, and the bundling pass needs to see that write so
+  // it inserts the mandatory stop before any instruction that reads the
+  // register - notably the epilogue's 'mov ar.pfs = <reg>'. (Using 'alloc's
+  // result, or any register it renames, in the same instruction group is
+  // illegal and faults with SIGILL.) Tag it (and the rest of the prologue
+  // below) as frame setup so the asm printer can hang the IA-64 unwind
+  // directives (.prologue / .save ar.pfs / .save rp / .fframe) off the right
+  // instructions.
   BuildMI(MBB, MBBI, DL, TII->get(IA64::ALLOC))
       .addReg(SavedPFSReg, RegState::Define)
       .addImm(0)
@@ -133,8 +108,8 @@ void IA64FrameLowering::emitPrologue(MachineFunction &MF,
     if (&Block != &MBB)
       Block.addLiveIn(SavedPFSReg);
 
-  // Save the incoming return pointer into its parked local, and likewise mark it
-  // live across the function.
+  // Save the incoming return pointer into its parked local, and likewise mark
+  // it live across the function.
   if (SavedRPReg) {
     BuildMI(MBB, MBBI, DL, TII->get(IA64::MOV), SavedRPReg)
         .addReg(IA64::rp)
@@ -256,7 +231,8 @@ MachineBasicBlock::iterator IA64FrameLowering::eliminateCallFramePseudoInstr(
 
   if (hasFP(MF)) {
     // If we have a frame pointer, turn the adjcallstackup instruction into a
-    // 'sub sp, <amt>' and the adjcallstackdown instruction into 'add sp, <amt>'.
+    // 'sub sp, <amt>' and the adjcallstackdown instruction into 'add sp,
+    // <amt>'.
     MachineInstr &Old = *I;
     unsigned Amount = Old.getOperand(0).getImm();
     DebugLoc DL = Old.getDebugLoc();

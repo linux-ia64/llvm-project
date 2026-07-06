@@ -12,8 +12,9 @@ using namespace llvm;
 
 void IA64FunctionInfo::anchor() {}
 
-MachineFunctionInfo *IA64FunctionInfo::clone(
-    BumpPtrAllocator &Allocator, MachineFunction &DestMF,
-    const DenseMap<MachineBasicBlock *, MachineBasicBlock *> &Src2DstMBB) const {
+MachineFunctionInfo *
+IA64FunctionInfo::clone(BumpPtrAllocator &Allocator, MachineFunction &DestMF,
+                        const DenseMap<MachineBasicBlock *, MachineBasicBlock *>
+                            &Src2DstMBB) const {
   return DestMF.cloneInfo<IA64FunctionInfo>(*this);
 }

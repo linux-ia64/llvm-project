@@ -9,8 +9,8 @@
 // This streamer emits the IA-64 unwind directives (.proc / .prologue /
 // .save ar.pfs / .save rp / .fframe / .body / .restore sp / .endp) that GNU
 // 'gas' assembles into the .IA_64.unwind / .IA_64.unwind_info sections. Those
-// sections -- not DWARF .eh_frame -- are what gdb/libunwind read to walk an
-// IA-64 stack, so emitting them is what makes a backtrace work. The asm printer
+// sections, not DWARF .eh_frame, are what gdb/libunwind read to walk an IA-64
+// stack, so emitting them is what makes a backtrace work. The asm printer
 // drives these calls off the frame-setup/destroy flags on the prologue and
 // epilogue instructions.
 //

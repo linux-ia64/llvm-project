@@ -7,8 +7,7 @@
 //===----------------------------------------------------------------------===//
 //
 // Add stops (;;) where required to prevent read-after-write and write-after-
-// write dependencies, for registers. (The pre-removal pass noted exceptions for
-// parallel compares targeting p0; those are not reintroduced here.)
+// write dependencies for registers.
 //
 // FIXME: actual bundle formation is left to the assembler; this only inserts
 // stop bits.
@@ -60,11 +59,11 @@ private:
   std::set<unsigned> PendingRegWrites;
 
   // Likewise carried across blocks: an alloc writes the RSE/CFM and must be
-  // separated from a later call by a stop. The alloc commonly lives in the entry
-  // block while the first call sits in a fall-through successor (e.g. alloc in
-  // the prologue, first call in the next block), so a per-block flag would lose
-  // the pending alloc at the block boundary and skip the required stop. Reset
-  // only at function entry and when a stop is emitted below.
+  // separated from a later call by a stop. The alloc commonly lives in the
+  // entry block while the first call sits in a fall-through successor (e.g.
+  // alloc in the prologue, first call in the next block), so a per-block flag
+  // would lose the pending alloc at the block boundary and skip the required
+  // stop. Reset only at function entry and when a stop is emitted below.
   bool RSEWrite = false;
 };
 char IA64BundlingPass::ID = 0;
@@ -112,7 +111,7 @@ bool IA64BundlingPass::runOnMachineBasicBlock(MachineBasicBlock &MBB) {
       set_union(PendingRegWrites, OrigWrites);
     }
 
-    // An alloc writes into the RSE and has to be separated from calls
+    // An alloc writes into the RSE and has to be separated from calls.
     if (MI.getOpcode() == IA64::ALLOC)
       RSEWrite = true;
   }

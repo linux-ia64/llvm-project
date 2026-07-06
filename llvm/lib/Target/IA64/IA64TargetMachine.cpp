@@ -6,10 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file implements the IA64 specific subclass of TargetMachine. It is the
-// capstone that aggregates the subtarget and wires up the codegen pass pipeline
-// (instruction selection + the bundling pre-emit pass), and registers the
-// target machine so `llc -mtriple=ia64` can allocate one.
+// This file implements the IA64 specific subclass of TargetMachine.
 //
 // The companion LLVMInitializeIA64TargetMC() lives in MCTargetDesc/.
 //
@@ -23,10 +20,10 @@
 #include "TargetInfo/IA64TargetInfo.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstr.h"
-#include "llvm/IR/Function.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
 #include "llvm/CodeGen/TargetPassConfig.h"
+#include "llvm/IR/Function.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/Compiler.h"
 #include <optional>
@@ -95,11 +92,12 @@ namespace {
 // Rewrite the symbolic output registers out0-out7 in debug values to the real
 // stacked register they alias. gas resolves 'out0' to r(32+inputs+locals) from
 // the 'alloc', but the .td gives out0-out7 the fixed DwarfRegNum 120-127 (=
-// physical r120-r127), so a variable that lives in an output register at some PC
-// -- e.g. a parameter already moved into place for a call -- would be read by
-// gdb from the wrong register (seen as a bogus '0x0' in test_gdb.test_pretty_
-// print). The actual stacked register has the correct DwarfRegNum, so map to it.
-// Runs in addPreEmitPass2, after LiveDebugValues has finalized the debug values.
+// physical r120-r127), so a variable that lives in an output register at some
+// PC, e.g. a parameter already moved into place for a call would be read by gdb
+// from the wrong register. The actual stacked register has the correct
+// DwarfRegNum, so map to it.
+// Runs in addPreEmitPass2, after LiveDebugValues has finalized the debug
+// values.
 struct IA64FixupDebugOutRegs : public MachineFunctionPass {
   static char ID;
   IA64FixupDebugOutRegs() : MachineFunctionPass(ID) {}
@@ -110,9 +108,9 @@ struct IA64FixupDebugOutRegs : public MachineFunctionPass {
     if (!MF.getFunction().getSubprogram())
       return false; // no debug info -> no debug values to fix
 
-    static const MCPhysReg OutRegs[8] = {
-        IA64::out0, IA64::out1, IA64::out2, IA64::out3,
-        IA64::out4, IA64::out5, IA64::out6, IA64::out7};
+    static const MCPhysReg OutRegs[8] = {IA64::out0, IA64::out1, IA64::out2,
+                                         IA64::out3, IA64::out4, IA64::out5,
+                                         IA64::out6, IA64::out7};
 
     // out_i is the stacked register just above the input+local region the
     // 'alloc' sized: index (inputs + locals + i). alloc operands are
@@ -137,8 +135,7 @@ struct IA64FixupDebugOutRegs : public MachineFunctionPass {
           if (!MO.isReg() || !MO.getReg())
             continue;
           for (unsigned i = 0; i != 8; ++i)
-            if (MO.getReg() == OutRegs[i] &&
-                Base + i < IA64NumStackedGPRs) {
+            if (MO.getReg() == OutRegs[i] && Base + i < IA64NumStackedGPRs) {
               MO.setReg(getIA64StackedGPR(Base + i));
               Changed = true;
               break;
@@ -173,10 +170,7 @@ TargetPassConfig *IA64TargetMachine::createPassConfig(PassManagerBase &PM) {
 void IA64PassConfig::addIRPasses() {
   // Expand atomics the backend cannot select directly: turn every atomicrmw
   // into a cmpxchg loop (shouldExpandAtomicRMWInIR) and bracket stronger-than-
-  // monotonic atomics with fences (shouldInsertFencesForAtomic). This is no
-  // longer part of the target-independent addIRPasses, so each target adds it
-  // (cf. SparcPassConfig); without it atomicrmw reaches isel as AtomicLoadAdd
-  // etc. and fails to select, and ordering fences are never inserted.
+  // monotonic atomics with fences (shouldInsertFencesForAtomic).
   addPass(createAtomicExpandLegacyPass());
 
   TargetPassConfig::addIRPasses();

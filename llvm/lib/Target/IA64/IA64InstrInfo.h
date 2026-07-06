@@ -21,16 +21,14 @@
 
 namespace llvm {
 
+class IA64Subtarget;
+
 class IA64InstrInfo : public IA64GenInstrInfo {
   const IA64RegisterInfo RI;
   virtual void anchor();
 
 public:
-  // The pre-removal backend held the InstrInfo standalone; the modern
-  // -gen-instr-info constructor needs the subtarget + register info. We take
-  // the base TargetSubtargetInfo (rather than a not-yet-existing IA64Subtarget)
-  // so this class can be built before the subtarget aggregate lands.
-  explicit IA64InstrInfo(const TargetSubtargetInfo &STI);
+  explicit IA64InstrInfo(const IA64Subtarget &ST);
 
   /// getRegisterInfo - TargetInstrInfo is a superset of MRegister info. As
   /// such, whenever a client has an instance of instruction info, it should
@@ -48,9 +46,9 @@ public:
       MachineInstr::MIFlag Flags = MachineInstr::NoFlags) const override;
 
   void loadRegFromStackSlot(
-      MachineBasicBlock &MBB, MachineBasicBlock::iterator MBBI, Register DestReg,
-      int FrameIndex, const TargetRegisterClass *RC, Register VReg,
-      unsigned SubReg = 0,
+      MachineBasicBlock &MBB, MachineBasicBlock::iterator MBBI,
+      Register DestReg, int FrameIndex, const TargetRegisterClass *RC,
+      Register VReg, unsigned SubReg = 0,
       MachineInstr::MIFlag Flags = MachineInstr::NoFlags) const override;
 
   bool analyzeBranch(MachineBasicBlock &MBB, MachineBasicBlock *&TBB,

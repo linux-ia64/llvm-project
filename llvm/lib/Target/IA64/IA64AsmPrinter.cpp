@@ -7,9 +7,7 @@
 //===----------------------------------------------------------------------===//
 //
 // This file contains a printer that converts the machine-dependent LLVM code
-// to GNU 'gas'-compatible IA-64 assembly. Unlike the pre-removal backend, which
-// hand-formatted each MachineInstr, this lowers each MachineInstr to an MCInst
-// and lets the streamer + IA64InstPrinter emit the text.
+// to GNU 'gas'-compatible IA-64 assembly.
 //
 //===----------------------------------------------------------------------===//
 
@@ -43,7 +41,8 @@ class IA64AsmPrinter : public AsmPrinter {
   bool EmittedBody = false;
   bool EmittedFFrame = false;
   // A framed function with more than one epilogue needs .label_state /
-  // .copy_state around its '.restore sp's; otherwise gas rejects the second one.
+  // .copy_state around its '.restore sp's; otherwise gas rejects the second
+  // one.
   bool NeedCopyState = false;
   // Set while lowering a GlobalAlias's aliasee: an alias names the aliasee's
   // entry-point symbol directly (`A = B`), so suppress the @fptr descriptor
@@ -133,8 +132,8 @@ void IA64AsmPrinter::emitInstruction(const MachineInstr *MI) {
     case IA64::ALLOC:
       // alloc copies the caller's ar.pfs into its destination register.
       TS.emitPrologueDirective();
-      TS.emitSaveARPFS(
-          IA64InstPrinter::getRegisterName(MI->getOperand(0).getReg().asMCReg()));
+      TS.emitSaveARPFS(IA64InstPrinter::getRegisterName(
+          MI->getOperand(0).getReg().asMCReg()));
       break;
     case IA64::MOV:
       // The return-pointer save is 'mov rN = rp'; distinguish it from the
@@ -204,8 +203,8 @@ bool IA64AsmPrinter::PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
 
 // An inline-asm memory operand ('m'): the address lives in a single register,
 // dereferenced as '[rN]'.
-bool IA64AsmPrinter::PrintAsmMemoryOperand(const MachineInstr *MI, unsigned OpNo,
-                                           const char *ExtraCode,
+bool IA64AsmPrinter::PrintAsmMemoryOperand(const MachineInstr *MI,
+                                           unsigned OpNo, const char *ExtraCode,
                                            raw_ostream &O) {
   if (ExtraCode && ExtraCode[0])
     return AsmPrinter::PrintAsmMemoryOperand(MI, OpNo, ExtraCode, O);
@@ -222,7 +221,7 @@ bool IA64AsmPrinter::PrintAsmMemoryOperand(const MachineInstr *MI, unsigned OpNo
 // descriptor. The generic AsmPrinter lowers the aliasee through lowerConstant()
 // (which wraps functions in @fptr), so `A = @fptr(B)` would be emitted: that
 // both mis-aliases A to the descriptor and makes GNU as abort (a symbol's value
-// expression can't be an @fptr pseudo-fixup -- "Case value 64 unexpected" in
+// expression can't be an @fptr pseudo-fixup - "Case value 64 unexpected" in
 // resolve_symbol_value). Flag the alias context so lowerConstant emits the bare
 // entry-point symbol, yielding the correct `A = B`.
 void IA64AsmPrinter::emitGlobalAlias(const Module &M, const GlobalAlias &GA) {

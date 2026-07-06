@@ -64,8 +64,8 @@ void MCSymbol::print(raw_ostream &OS, const MCAsmInfo *MAI) const {
 
   // Some assemblers (IA-64 GNU as) parse a bare identifier matching a register
   // name alias as that register even in symbol position, so a non-temporary
-  // symbol reference is decorated with a trailing '#' that the assembler strips.
-  // See MCAsmInfo::UseSymbolHashSuffix.
+  // symbol reference is decorated with a trailing '#' that the assembler
+  // strips. See MCAsmInfo::UseSymbolHashSuffix.
   bool HashSuffix = MAI && MAI->useSymbolHashSuffix() && !isTemporary();
 
   if (!MAI || MAI->isValidUnquotedName(Name)) {

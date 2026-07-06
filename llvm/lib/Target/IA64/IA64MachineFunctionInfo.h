@@ -23,9 +23,9 @@ class IA64FunctionInfo : public MachineFunctionInfo {
   // The stacked local that emitPrologue makes 'alloc' write the incoming ar.pfs
   // into, and that emitEpilogue restores ar.pfs from before the return. Like
   // SavedRPReg below it is picked just above the locals the allocator used (so
-  // the register stack engine preserves it across calls and it is never spilled)
-  // and reserved by widening the 'alloc' frame. This gives the unwinder one
-  // fixed location to name in a '.save ar.pfs, <reg>' directive.
+  // the register stack engine preserves it across calls and it is never
+  // spilled) and reserved by widening the 'alloc' frame. This gives the
+  // unwinder one fixed location to name in a '.save ar.pfs, <reg>' directive.
   Register SavedPFSReg;
 
   // FrameIndex of the varargs register save area: the slot holding the first
@@ -37,7 +37,8 @@ class IA64FunctionInfo : public MachineFunctionInfo {
   // (b0/rp) in, for a non-leaf function. It is picked just above the locals the
   // allocator used (so the register stack engine preserves it across calls for
   // free) and reserved by widening the 'alloc' frame; emitEpilogue restores b0
-  // from it before the return. The unwinder gets one fixed location to name in a
+  // from it before the return. The unwinder gets one fixed location to name in
+  // a
   // '.save rp, <reg>' directive, which the asm printer reads off the FrameSetup
   // 'mov <reg> = rp'. Left null for a leaf function, which never clobbers b0.
   Register SavedRPReg;

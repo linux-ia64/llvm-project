@@ -10,16 +10,6 @@
 // properties of the instructions which are needed for code generation, machine
 // code emission, and analysis.
 //
-// Phase C ported the instruction *descriptions* (operands, asm strings, unit
-// type, explicit flags / Defs / Uses) and wired -gen-instr-info, leaving every
-// DAG selection pattern as an empty `[]` placeholder. Phase D (D6) restores
-// only the patterns the Stage-1 acceptance test (plus.ll) exercises — the
-// reg/reg `add` and the `retflag`/RET return — and wires -gen-dag-isel. The
-// remaining patterns, PatLeaf predicates and the GETFD/BRCALL nodes stay
-// deferred (calls, loads, FP, etc. are out of Stage-1 scope). The generic `ret`
-// SDNode no longer exists, so the old `Pat<(ret), (RET)>` is dropped; RET is now
-// matched directly from the target-specific `retflag` node.
-//
 //===----------------------------------------------------------------------===//
 
 include "IA64InstrFormats.td"
@@ -35,10 +25,27 @@ include "IA64InstrFormats.td"
 // return-value regs, e.g. r8) onto the selected RET machine instruction as
 // implicit uses. Without it those registers look dead and the return-value
 // copies (and everything feeding them) get eliminated, leaving just the
-// 'alloc'. (ar.pfs is no longer among them: frame lowering now restores it from
-// a parked stacked local in the epilogue, alongside rp.)
+// 'alloc'.
 def retflag : SDNode<"IA64ISD::RET_FLAG", SDTNone,
                      [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
+
+// BRCALL - the IA64 call node. LowerCall builds this (chain, callee, arg-reg
+// uses..., [glue]) and IA64ISelDAGToDAG selects it directly to a br.call form
+// (custom-selected because br.call targets a branch register, not a GPR);
+// the profile below just describes the shape for the generated node info (the
+// callee is a pointer-typed target address, the arg-reg uses are variadic).
+def SDT_IA64Call : SDTypeProfile<0, -1, [SDTCisVT<0, iPTR>]>;
+def brcall : SDNode<"IA64ISD::BRCALL", SDT_IA64Call,
+                    [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue, SDNPVariadic]>;
+
+// TLS_TPREL / TLS_GOTLOAD - the local-exec tprel offset and the GOT-slot load
+// used by the thread-local lowering (see LowerGlobalTLSAddress). Both take a
+// single TargetGlobalAddress operand and produce a pointer-typed value; they
+// are selected by patterns / custom selection, not built from these defs, but
+// the defs are what make the nodes appear in the generated IA64ISD enum.
+def SDT_IA64TlsUnary : SDTypeProfile<1, 1, [SDTCisPtrTy<0>, SDTCisPtrTy<1>]>;
+def tls_tprel : SDNode<"IA64ISD::TLS_TPREL", SDT_IA64TlsUnary>;
+def tls_gotload : SDNode<"IA64ISD::TLS_GOTLOAD", SDT_IA64TlsUnary>;
 
 // Call-sequence markers are target-independent nodes (ISD::CALLSEQ_START/END)
 // but each target declares them with its own operand type profile. IA-64 frame
@@ -83,12 +90,11 @@ def s64imm  : Operand<i64> {
   let PrintMethod = "printS64ImmOperand";
 }
 
-let PrintMethod = "printGlobalOperand" in
-  def globaladdress : Operand<i64>;
-
-// the asmprinter needs to know about calls
-let PrintMethod = "printCallOperand" in
-  def calltarget : Operand<i64>;
+// Symbol / call-target operands carry any relocation specifier (@ltoff,
+// @fptr, ...) on their MCExpr, which the default operand printer renders via
+// MCAsmInfo::printSpecifierExpr; no dedicated print method is needed.
+def globaladdress : Operand<i64>;
+def calltarget : Operand<i64>;
 
 //===----------------------------------------------------------------------===//
 // Immediate predicates
@@ -144,7 +150,8 @@ def ADDS : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, s14imm:$imm),
 // extra bits with a 2-bit register field: its addend must be r0-r3 (in practice
 // only r0, since r1/r2 are reserved and r3 is the lone allocatable member of
 // GR03).
-// Used for constant materialization only.
+// Used in constant materialization only to avoid running out of GR03 registers.
+// FIXME: Make this usable for general use.
 def ADDL : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR03:$src1, s22imm:$imm),
            "addl $dst = $imm, $src1", []>, isA;
 
@@ -166,13 +173,12 @@ def ADDL_GA : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, globaladdress
 
 // movl of a relocated symbol: materializes a full 64-bit symbol-relative value
 // directly in the instruction (no GOT). Hand-selected (no DAG pattern) for the
-// local-exec TLS sequence -- 'movl rX = @tprel(sym)' (R_IA64_TPREL64I) -- which
+// local-exec TLS sequence - 'movl rX = @tprel(sym)' (R_IA64_TPREL64I) - which
 // must use a direct relocation since local-exec by definition skips the GOT;
 // the 64-bit form dodges the addl imm22/r0-r3 restriction for any tp offset.
 def MOVL_GA : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins globaladdress:$imm),
            "movl $dst = $imm", []>, isLX;
 
-// hmm
 def ADDL_EA : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, calltarget:$imm),
            "addl $dst = $imm, $src1", []>, isA;
 
@@ -183,8 +189,6 @@ def SUB  : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, GR:$src2),
 def SUB1 : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, GR:$src2),
            "sub $dst = $src1, $src2, 1", []>, isA;
 
-// The pre-removal backend marked these "isTwoAddress"; the modern equivalent
-// is a tied-operand Constraints string (first input tied to the def).
 let Constraints = "$src1 = $dst" in {
 def TPCADDIMM22 : AForm<0x03, 0x0b,
   (outs GR:$dst), (ins GR:$src1, s22imm:$imm, PR:$qp),
@@ -197,7 +201,6 @@ def TPCMPIMM8NE : AForm<0x03, 0x0b,
     "($qp) cmp.ne $dst , p0 = $imm, $src2">, isA;
 }
 
-// normal sign/zero-extends
 def SXT1 : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src), "sxt1 $dst = $src",
            [(set GR:$dst, (sext_inreg GR:$src, i8))]>, isI;
 def ZXT1 : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src), "zxt1 $dst = $src",
@@ -211,7 +214,6 @@ def SXT4 : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src), "sxt4 $dst = $sr
 def ZXT4 : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src), "zxt4 $dst = $src",
            [(set GR:$dst, (and GR:$src, is32ones))]>, isI;
 
-// fixme: shrs vs shru?
 def MIX1L : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, GR:$src2),
           "mix1.l $dst = $src1, $src2", []>, isI;
 def MIX2L : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, GR:$src2),
@@ -240,11 +242,10 @@ def XMAHUD : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$
 // IA-64 has no integer multiply unit; 'mul' is synthesized through the FP
 // fixed-point multiply-add (xma) pipe. Move both operands into FP registers
 // (setf.sig), multiply-add with F0 (the fixed +0.0) as the addend so the
-// result is just the product -- xma.l yields the low 64 bits, which is exactly
-// the low-half integer 'mul' -- then move the result back to a GR (getf.sig).
+// result is just the product - xma.l yields the low 64 bits, which is exactly
+// the low-half integer 'mul' - then move the result back to a GR (getf.sig).
 // The high 64 bits of a 64x64 product come from the same pipe: xma.hu for the
-// unsigned high (mulhu), xma.h for the signed high (mulhs). These feed clang's
-// divide-by-constant strength reduction (a magic-number multiply-high).
+// unsigned high (mulhu), xma.h for the signed high (mulhs).
 def : Pat<(mul GR:$src1, GR:$src2),
           (GETFSIGD (f64 (XMALD (f64 (SETFSIGD GR:$src1)),
                                 (f64 (SETFSIGD GR:$src2)), (f64 F0))))>;
@@ -268,8 +269,7 @@ def OR    : AForm_DAG<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, GR:$src2),
 def pOR   : AForm<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, GR:$src2, PR:$qp),
           "($qp) or $dst = $src1, $src2">, isA;
 
-// the following are all a bit unfortunate: we throw away the complement
-// of the compare!
+// FIXME: Use both results of the comparison.
 def CMPEQ : AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins GR:$src1, GR:$src2),
           "cmp.eq $dst, p0 = $src1, $src2",
           [(set PR:$dst, (setcc GR:$src1, GR:$src2, SETEQ))]>, isA;
@@ -303,7 +303,7 @@ def CMPGEU: AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins GR:$src1, GR:$src2),
 
 // FP compares. Each sets a predicate from an IA-64 fcmp relation. The ordered
 // relations (eq/lt/le/gt/ge) are false when an operand is NaN; the negated
-// relations (nlt/nle/ngt/nge) and unord are true when unordered -- exactly the
+// relations (nlt/nle/ngt/nge) and unord are true when unordered - exactly the
 // U-prefixed setcc semantics. SETONE/SETUEQ have no single relation and are
 // expanded by the legalizer (setCondCodeAction) into a pair of these joined by
 // the i1 and/or patterns.
@@ -346,7 +346,7 @@ def FCMPNGE : AForm_DAG<0x03, 0x0b, (outs PR:$dst), (ins FP:$src1, FP:$src2),
 
 // The "plain" (NaN-don't-care) FP conditions, which the optimizer emits when
 // NaN ordering is irrelevant (e.g. comparing a folded constant). Map them to
-// the ordered relations -- NaN compares false, matching the hardware fcmp.
+// the ordered relations: NaN compares false, matching the hardware fcmp.
 def : Pat<(setcc (f64 FP:$a), (f64 FP:$b), SETEQ), (FCMPEQ FP:$a, FP:$b)>;
 def : Pat<(setcc (f64 FP:$a), (f64 FP:$b), SETGT), (FCMPGT FP:$a, FP:$b)>;
 def : Pat<(setcc (f64 FP:$a), (f64 FP:$b), SETGE), (FCMPGE FP:$a, FP:$b)>;
@@ -379,7 +379,7 @@ def : Pat<(setcc (f32 FP:$a), (f32 FP:$b), SETNE),  (FCMPNE FP:$a, FP:$b)>;
 def PCMPEQUNCR0R0 : AForm<0x03, 0x0b, (outs PR:$dst), (ins PR:$qp),
     "($qp) cmp.eq.unc $dst, p0 = r0, r0">, isA;
 
-// materialization of PR (i1) constants using CMPNE/CMPEQ
+// Materialization of PR (i1) constants using CMPNE/CMPEQ.
 def : Pat<(i1 0), (CMPNE r0, r0)>;
 def : Pat<(i1 1), (CMPEQ r0, r0)>;
 def : Pat<(i1 -1), (CMPEQ r0, r0)>;
@@ -462,18 +462,10 @@ def : Pat<(i1 (select PR:$qp, PR:$t, PR:$f)),
                        (TPCADDS (ADDS r0, 0), 1, PR:$t), PR:$qp),
                  r0)>;
 
-// load constants of various sizes // FIXME: prettyprint -ve constants
-
-// TODO: support postincrement (reg, imm9) loads+stores - this needs more
-// tablegen support
-
-def IUSE : PseudoInstIA64<(outs), (ins variable_ops), "// IUSE">;
-// Call-frame setup/teardown. Selected directly from callseq_start/callseq_end
-// via these patterns (the modern idiom, as on Sparc) so TableGen threads the
-// chain and glue for us -- the pre-removal backend hand-selected these, which
-// predates the two-operand + glue callseq_end shape. They def/use sp (r12);
-// IA64FrameLowering::eliminateCallFramePseudoInstr reads the byte count from
-// operand 0 and turns them into sp adjustments (or erases them).
+// Call-frame setup/teardown.
+// They def/use sp (r12); IA64FrameLowering::eliminateCallFramePseudoInstr reads
+// the byte count from operand 0 and turns them into sp adjustments (or erases
+// them).
 let Defs = [r12], Uses = [r12] in {
 def ADJUSTCALLSTACKDOWN : PseudoInstIA64_DAG<(outs),
                           (ins i64imm:$amt1, i64imm:$amt2),
@@ -484,6 +476,7 @@ def ADJUSTCALLSTACKUP : PseudoInstIA64_DAG<(outs),
                         "// ADJUSTCALLSTACKUP",
                         [(callseq_end timm:$amt1, timm:$amt2)]>;
 }
+
 def ALLOC : AForm<0x03, 0x0b,
   (outs GR:$dst), (ins i8imm:$inputs, i8imm:$locals, i8imm:$outputs, i8imm:$rotating),
     "alloc $dst = ar.pfs,$inputs,$locals,$outputs,$rotating">, isM;
@@ -524,13 +517,15 @@ def EXTRU : AForm<0x03, 0x0b,
   (outs GR:$dst), (ins GR:$src1, u6imm:$imm1, u6imm:$imm2),
   "extr.u $dst = $src1, $imm1, $imm2">, isI;
 
-// extend PR into GR. zext/anyext set the low bit (0/1); sext fills the whole
-// register, since for a 1-bit value the bit is the sign (set -> all-ones, -1).
+// Extend PR into GR.
+// zext/anyext set the low bit (0/1); sext fills the whole register, since for
+// a 1-bit value, the bit is the sign (set -> all-ones, -1).
 def : Pat<(zext PR:$src),   (TPCADDS (ADDS r0, 0),  1, PR:$src)>;
 def : Pat<(anyext PR:$src), (TPCADDS (ADDS r0, 0),  1, PR:$src)>;
 def : Pat<(sext PR:$src),   (TPCADDS (ADDS r0, 0), -1, PR:$src)>;
 
-// truncate GR into PR: the predicate is the low bit (extr.u then compare != 0)
+// Truncate GR into PR.
+// The predicate is the low bit (extr.u, then compare != 0).
 def : Pat<(i1 (trunc GR:$src)), (CMPNE (EXTRU GR:$src, 0, 1), r0)>;
 
 def DEPZ : AForm<0x03, 0x0b,
@@ -544,11 +539,11 @@ def PCMPEQUNC : AForm<0x03, 0x0b, (outs PR:$dst), (ins GR:$src1, GR:$src2, PR:$q
 def PCMPNE : AForm<0x03, 0x0b, (outs PR:$dst), (ins GR:$src1, GR:$src2, PR:$qp),
   "($qp) cmp.ne $dst, p0 = $src1, $src2">, isA;
 
-// two destinations!
+// Two-destination form of CMPEQ.
 def BCMPEQ : AForm<0x03, 0x0b, (outs PR:$dst1, PR:$dst2), (ins GR:$src1, GR:$src2),
   "cmp.eq $dst1, dst2 = $src1, $src2">, isA;
 
-// Binary logical operations (implemented using conditional assignment)
+// Binary logical operations (implemented using conditional assignment).
 def : Pat<(i1 (or  PR:$src1, PR:$src2)),
   // $dst <- 0
   // if ($src1) $dst <- 1
@@ -575,12 +570,10 @@ def : Pat<(i1 (xor PR:$src1, PR:$src2)),
 
 def ADDIMM14 : AForm<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, s14imm:$imm),
   "adds $dst = $imm, $src1">, isA;
-
 def ADDIMM22 : AForm<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, s22imm:$imm),
   "add $dst = $imm, $src1">, isA;
 def CADDIMM22 : AForm<0x03, 0x0b, (outs GR:$dst), (ins GR:$src1, s22imm:$imm, PR:$qp),
   "($qp) add $dst = $imm, $src1">, isA;
-
 def SUBIMM8 : AForm<0x03, 0x0b, (outs GR:$dst), (ins s8imm:$imm, GR:$src2),
   "sub $dst = $imm, $src2">, isA;
 
@@ -599,7 +592,7 @@ let mayStore = 1 in {
     "stfd [$dstPtr] = $value">, isM;
   def STF_SPILL : AForm<0x03, 0x0b, (outs), (ins GR:$dstPtr, FP:$value),
     "stf.spill [$dstPtr] = $value">, isM;
-  // Store the 80-bit double-extended (long double) memory format -- 10 bytes,
+  // Store the 80-bit double-extended (long double) memory format: 10 bytes,
   // the C 'long double' object format. Distinct from stf.spill (16-byte raw
   // register format used for vreg spills).
   def STFE : AForm<0x03, 0x0b, (outs), (ins GR:$dstPtr, FP:$value),
@@ -664,7 +657,6 @@ let mayLoad = 1, mayStore = 1, hasSideEffects = 1, Uses = [AR_CCV] in {
     "cmpxchg8.acq $dst = [$ptr], $new, ar.ccv">, isM;
 }
 
-// some FP stuff:
 // Double-precision (f64) arithmetic carries the .d completer (53-bit rounding);
 // the unsuffixed forms below are the extended (f80) ops, and the .s forms are
 // single (f32). Naming mirrors the completer: FADDD/.d, FADD/none, FADDS/.s.
@@ -687,7 +679,7 @@ def FMPYS : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2),
   "fmpy.s $dst = $src1, $src2",
   [(set FP:$dst, (f32 (fmul FP:$src1, FP:$src2)))]>, isF;
 // Fused multiply-add forms. These match the ISD::FMA node (a single-rounding
-// a*b+c), which the DAG only forms when FP contraction is permitted -- so unlike
+// a*b+c), which the DAG only forms when FP contraction is permitted, so unlike
 // the pre-removal (fadd (fmul ...)) pattern they never silently fuse. fms is
 // a*b-c, fnma is c-a*b (= (-a)*b+c).
 def FMAD : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$src3),
@@ -699,9 +691,7 @@ def FMSD : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$sr
 def FNMAD : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$src3),
   "fnma.d $dst = $src1, $src2, $src3",
   [(set FP:$dst, (f64 (fma (fneg FP:$src1), FP:$src2, FP:$src3)))]>, isF;
-// f32 single-rounding forms (fma.s). compiler_builtins' libm calls
-// llvm.fma.f32 directly, which produces an f32 ISD::FMA node regardless of
-// contraction, so f32 needs its own pattern.
+// f32 single-rounding forms (fma.s).
 def FMAS : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2, FP:$src3),
   "fma.s $dst = $src1, $src2, $src3",
   [(set FP:$dst, (f32 (fma FP:$src1, FP:$src2, FP:$src3)))]>, isF;
@@ -728,9 +718,7 @@ foreach vt = [f32, f64, f80] in {
 
 // Extended-precision (f80 / 'long double') arithmetic. With no precision
 // completer the F-unit rounds to the dynamic precision of status field sf0,
-// which the SysV ABI initialises to 80-bit double-extended -- exactly the C
-// long double. (FADDD etc. force .d / 53-bit; FADDS forces .s.) Memory format
-// is the 10-byte ldfe/stfe; the 82-bit register holds it exactly.
+// which the SysV ABI initialises to 80-bit double-extended.
 def FADD : AForm_DAG<0x03, 0x0b, (outs FP:$dst), (ins FP:$src1, FP:$src2),
   "fadd $dst = $src1, $src2",
   [(set FP:$dst, (f80 (fadd FP:$src1, FP:$src2)))]>, isF;
@@ -868,7 +856,7 @@ def GETFSIG : AForm<0x03, 0x0b, (outs GR:$dst), (ins FP:$src),
 def SETFSIG : AForm<0x03, 0x0b, (outs FP:$dst), (ins GR:$src),
   "setf.sig $dst = $src">, isM;
 
-// Implement f64/f32 immediates using i64 immediates
+// Implement f64/f32 immediates using i64 immediates.
 def fpimm_bits64 : SDNodeXForm<fpimm, [{
   APFloat F = N->getValueAPF();
   bool Ignored;
@@ -880,7 +868,7 @@ def : Pat<(f64 fpimm:$v), (SETFD (MOVL (fpimm_bits64 $v)))>;
 def : Pat<(f32 fpimm:$v), (SETFD (MOVL (fpimm_bits64 $v)))>;
 
 // Reinterpret an f64's bits as an i64 and back (getf.d / setf.d), the 64-bit
-// IEEE memory form -- used to pass a variadic double in a general register
+// IEEE memory form, used to pass a variadic double in a general register
 // (see CC_IA64_Call_VarArgFP).
 def : Pat<(i64 (bitconvert (f64 FP:$src))), (GETFD FP:$src)>;
 def : Pat<(f64 (bitconvert (i64 GR:$src))), (SETFD GR:$src)>;
@@ -906,12 +894,8 @@ let isCall = 1, /* isTerminator = 1, isBranch = 1, */
   // Defs of a non-dso_local call after selection. hasPostISelHook routes the
   // call instructions through that hook.
   hasPostISelHook = 1,
-// all calls clobber non-callee-saved registers, and for now, they are these:
-// rp (b0) leads the list: br.call writes the return address into it, so every
-// call clobbers it. Without this the rp save/restore LowerCall emits around a
-// call is a no-op round trip (rp looks unchanged) and the coalescer deletes it,
-// leaving b0 corrupted across the call -> the function's own br.ret jumps to
-// garbage (observed as SIGILL on a recursive call).
+  // All calls clobber non-callee-saved registers; rp (b0) leads the list:
+  // br.call writes the return address into it, so every call clobbers it.
   Defs = [rp,
   r2,r3,r8,r9,r10,r11,r14,r15,r16,r17,r18,r19,r20,r21,r22,r23,r24,
   r25,r26,r27,r28,r29,r30,r31,
@@ -926,17 +910,12 @@ let isCall = 1, /* isTerminator = 1, isBranch = 1, */
   F106,F107,F108,F109,F110,F111,F112,F113,F114,F115,F116,F117,F118,F119,
   F120,F121,F122,F123,F124,F125,F126,F127,
   out0,out1,out2,out3,out4,out5,out6,out7] in {
-// old pattern call
   def BRCALL: RawForm<0x03, 0xb0, (outs), (ins calltarget:$dst),
-  "br.call.sptk rp = $dst">, isB;   // FIXME: teach llvm about branch regs?
-
-// calls a globaladdress
+  "br.call.sptk rp = $dst">, isB;
   def BRCALL_IPREL_GA : RawForm<0x03, 0xb0, (outs), (ins calltarget:$dst),
-  "br.call.sptk rp = $dst">, isB;       // FIXME: teach llvm about branch regs?
-// calls an externalsymbol
+  "br.call.sptk rp = $dst">, isB;
   def BRCALL_IPREL_ES : RawForm<0x03, 0xb0, (outs), (ins calltarget:$dst),
-  "br.call.sptk rp = $dst">, isB;       // FIXME: teach llvm about branch regs?
-// calls through a function descriptor
+  "br.call.sptk rp = $dst">, isB;
   def BRCALL_INDIRECT : RawForm<0x03, 0xb0, (outs), (ins BR:$branchreg),
   "br.call.sptk rp = $branchreg">, isB;
   def BRLCOND_CALL : RawForm<0x03, 0xb0, (outs), (ins PR:$qp, i64imm:$dst),
@@ -954,7 +933,7 @@ let isCall = 1, /* isTerminator = 1, isBranch = 1, */
 let isTerminator = 1, isReturn = 1, Uses = [rp, AR_PFS] in
   def RET : AForm_DAG<0x03, 0x0b, (outs), (ins),
             "br.ret.sptk.many rp",
-            [(retflag)]>, isB; // return
+            [(retflag)]>, isB;
 
-// the evil stop bit of despair
+// IA-64's stop pseudo-instruction, generated by IA64Bundling pass.
 def STOP : PseudoInstIA64<(outs), (ins variable_ops), ";;">;
