@@ -54,7 +54,7 @@ public:
 
   bool validateAsmConstraint(const char *&Name,
                              TargetInfo::ConstraintInfo &Info) const override {
-    // Inline-asm constraints are not modelled yet (no inline asm in scope).
+    // Inline-asm constraints are not modelled.
     return false;
   }
 

@@ -199,7 +199,8 @@ ABIArgInfo IA64ABIInfo::classifyReturnType(QualType RetTy) const {
     return coerceHFA(Base, Members);
 
   // Aggregates up to 256 bits return in r8-r11; larger ones in a caller buffer
-  // whose address is passed in r8 (sret, routed by the backend's CCIfSRet rule).
+  // whose address is passed in r8 (sret, routed by the backend's CCIfSRet
+  // rule).
   if (Size > MaxReturnRegBits)
     return getNaturalAlignIndirect(RetTy, getDataLayout().getAllocaAddrSpace(),
                                    /*ByVal=*/false);
