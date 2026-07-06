@@ -870,6 +870,21 @@ SDValue IA64TargetLowering::LowerOperation(SDValue Op,
   switch (Op.getOpcode()) {
   default:
     report_fatal_error("IA64: unimplemented custom operation lowering");
+  case ISD::RETURNADDR: {
+    // __builtin_return_address(0): the caller's address, i.e. the incoming
+    // value of rp (b0) at function entry. Capture it via a live-in vreg (as
+    // for an ordinary argument) rather than via the frame's own rp save,
+    // which parks rp in a stacked local scoped to this function's own
+    // br.ret and is only allocated when the function itself makes calls.
+    if (Op.getConstantOperandVal(0) != 0)
+      report_fatal_error("IA64: __builtin_return_address with nonzero depth "
+                         "is not supported");
+    MachineFunction &MF = DAG.getMachineFunction();
+    MF.getFrameInfo().setReturnAddressIsTaken(true);
+    SDLoc dl(Op);
+    Register Reg = MF.addLiveIn(IA64::rp, &IA64::GRRegClass);
+    return DAG.getCopyFromReg(DAG.getEntryNode(), dl, Reg, Op.getValueType());
+  }
   case ISD::FRAMEADDR: {
     // __builtin_frame_address(0): the address of the current frame, which we
     // take to be the frame register (the frame pointer r5 if one is forced,
