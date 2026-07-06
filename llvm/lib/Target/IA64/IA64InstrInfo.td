@@ -454,6 +454,7 @@ let Constraints = "$src2 = $dst" in {
 def : Pat<(i64 (select PR:$qp, GR:$t, GR:$f)), (CMOV  GR:$f, GR:$t, PR:$qp)>;
 def : Pat<(f32 (select PR:$qp, FP:$t, FP:$f)), (CFMOV FP:$f, FP:$t, PR:$qp)>;
 def : Pat<(f64 (select PR:$qp, FP:$t, FP:$f)), (CFMOV FP:$f, FP:$t, PR:$qp)>;
+def : Pat<(f80 (select PR:$qp, FP:$t, FP:$f)), (CFMOV FP:$f, FP:$t, PR:$qp)>;
 // Selecting one predicate from two: there is no predicated predicate-move, so
 // widen each arm to a 0/1 GR (the zext-PR sequence), CMOV those, and compare the
 // result back to a predicate (!= 0). Mirrors the pre-removal SELECTBOOL.
