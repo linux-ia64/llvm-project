@@ -132,7 +132,7 @@ void IA64FrameLowering::emitPrologue(MachineFunction &MF,
   // Add 16 bytes at the bottom of the stack (scratch area) and round the size
   // to a multiple of the alignment.
   unsigned Align = getStackAlign().value();
-  unsigned Size = 16 + (FP ? 8 : 0);
+  unsigned Size = 16;
   NumBytes = (NumBytes + Size + Align - 1) / Align * Align;
   MFI.setStackSize(NumBytes);
 
