@@ -792,9 +792,18 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   else if (ExternalSymbolSDNode *E = dyn_cast<ExternalSymbolSDNode>(Callee))
     Callee = DAG.getTargetExternalSymbol(E->getSymbol(), MVT::i64);
 
-  // Emit the call.
+  // Emit the call. CLI.CB is the IR call site (null for a libcall), and
+  // hasFnAttr checks both its own attributes and, falling back, the callee
+  // Function's - so this is correct whether the callee is direct or (as here)
+  // reached indirectly through a register, unlike inspecting the callee
+  // operand's GlobalValue would be. AdjustInstrPostInstrSelection reads this
+  // back off the selected instruction to decide whether the call needs the
+  // stacked-register clobber regmask below.
+  bool CallReturnsTwice =
+      CLI.CB && CLI.CB->hasFnAttr(Attribute::ReturnsTwice);
   SDVTList NodeTys = DAG.getVTList(MVT::Other, MVT::Glue);
-  SmallVector<SDValue, 12> Ops = {Chain, Callee};
+  SmallVector<SDValue, 12> Ops = {
+      Chain, Callee, DAG.getTargetConstant(CallReturnsTwice, dl, MVT::i8)};
   for (auto &R : RegsToPass)
     Ops.push_back(DAG.getRegister(R.first, R.second.getValueType()));
   if (InGlue.getNode())
@@ -1046,7 +1055,8 @@ IA64TargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
 void IA64TargetLowering::AdjustInstrPostInstrSelection(
     MachineInstr &MI, SDNode * /*Node*/) const {
   unsigned Opc = MI.getOpcode();
-  if (Opc != IA64::BRCALL_IPREL_GA && Opc != IA64::BRCALL_IPREL_ES)
+  if (Opc != IA64::BRCALL_IPREL_GA && Opc != IA64::BRCALL_IPREL_ES &&
+      Opc != IA64::BRCALL_INDIRECT)
     return;
 
   // gp (r1) is caller-saved at any call that is *not* provably local to this
@@ -1061,7 +1071,8 @@ void IA64TargetLowering::AdjustInstrPostInstrSelection(
   // (LTO could later prove more callees local and drop the clobber.)
   //
   // The call's only explicit operand (0) is the target: a GlobalAddress (direct
-  // call to a known function) or an ExternalSymbol (always external).
+  // call to a known function), an ExternalSymbol (always external), or a
+  // register (BRCALL_INDIRECT) - never provably local.
   const MachineOperand &Target = MI.getOperand(0);
   bool IsLocal = Target.isGlobal() && Target.getGlobal()->isDSOLocal();
   if (!IsLocal)
@@ -1086,6 +1097,13 @@ void IA64TargetLowering::AdjustInstrPostInstrSelection(
   // exactly as GCC's 'calls_setjmp' handling requires. This complements the
   // gp/sp/rp parking LowerCall already does for returns_twice functions.
   //
+  // Whether *this* call site is returns_twice: LowerCall reads it off CLI.CB
+  // (the IR call, which carries the attribute whether the callee is direct or
+  // - as for BRCALL_INDIRECT - reached through a register with no associated
+  // Function to query here) and threads it through as operand 1, matching how
+  // AArch64/ARM/RISC-V/Sparc key their own per-call-site returns_twice
+  // handling off CLI.CB rather than the calls' resolved GlobalValue.
+  //
   // Express it as a regmask rather than 96 implicit-defs: implicit-def reg
   // operands make MachineRegisterInfo::isPhysRegUsed report every stacked
   // register as used, which IA64FrameLowering would then size the 'alloc' frame
@@ -1093,9 +1111,8 @@ void IA64TargetLowering::AdjustInstrPostInstrSelection(
   // separately and is skipped by the frame-sizing scan (isPhysRegUsed's
   // SkipRegMaskTest), so it constrains the allocator without inflating the
   // frame.
-  const Function *Callee =
-      Target.isGlobal() ? dyn_cast<Function>(Target.getGlobal()) : nullptr;
-  if (Callee && Callee->hasFnAttribute(Attribute::ReturnsTwice)) {
+  bool CallReturnsTwice = MI.getOperand(1).getImm() != 0;
+  if (CallReturnsTwice) {
     MachineFunction &MF = *MI.getMF();
     unsigned NumRegs = MF.getSubtarget().getRegisterInfo()->getNumRegs();
     uint32_t *Mask = MF.allocateRegMask();

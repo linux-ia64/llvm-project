@@ -218,17 +218,23 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
     // Custom-selected because br.call targets a branch register (rp for the
     // return address, b6 for an indirect target) rather than a GPR, which the
     // generic matcher can't express. LowerCall builds IA64ISD::BRCALL (chain,
-    // callee, arg-reg uses..., [glue]) and leaves the callee as a
-    // Target{GlobalAddress,ExternalSymbol}. A direct call selects to
-    // 'br.call rp = <target>'; the argument-register operands carry through as
-    // the call's (precise) implicit uses. An indirect / function-descriptor
-    // call arrives with the callee already in b6 (a Register operand, set up by
-    // LowerCall) and selects to BRCALL_INDIRECT.
+    // callee, returns-twice flag, arg-reg uses..., [glue]) and leaves the
+    // callee as a Target{GlobalAddress,ExternalSymbol}. A direct call selects
+    // to 'br.call rp = <target>'; the argument-register operands carry
+    // through as the call's (precise) implicit uses. An indirect /
+    // function-descriptor call arrives with the callee already in b6 (a
+    // Register operand, set up by LowerCall) and selects to BRCALL_INDIRECT.
     SDValue Chain = N->getOperand(0);
     SDValue Callee = N->getOperand(1);
+    // Carried through as MI operand 1 (a plain immediate, not consumed here)
+    // so AdjustInstrPostInstrSelection can tell, after selection, whether
+    // this call site is returns_twice - it cannot recover that from the
+    // selected instruction's callee operand alone, since an indirect call's
+    // target is a register rather than a GlobalValue.
+    SDValue ReturnsTwiceFlag = N->getOperand(2);
 
     // A trailing glue operand, if present, is last; everything between the
-    // callee and it is an argument-register use.
+    // flag and it is an argument-register use.
     unsigned NumOps = N->getNumOperands();
     SDValue InGlue;
     if (NumOps && N->getOperand(NumOps - 1).getValueType() == MVT::Glue)
@@ -246,11 +252,12 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
     else
       report_fatal_error("IA64: unhandled call target");
 
-    // Machine-node operands: (calltarget, arg-reg uses..., chain, [glue]);
-    // results: (chain, glue).
+    // Machine-node operands: (calltarget, returns-twice flag, arg-reg
+    // uses..., chain, [glue]); results: (chain, glue).
     SmallVector<SDValue, 12> Ops;
     Ops.push_back(Callee);
-    for (unsigned i = 2; i < NumOps; ++i)
+    Ops.push_back(ReturnsTwiceFlag);
+    for (unsigned i = 3; i < NumOps; ++i)
       Ops.push_back(N->getOperand(i));
     Ops.push_back(Chain);
     if (InGlue.getNode())
