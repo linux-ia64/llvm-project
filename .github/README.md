@@ -52,6 +52,8 @@ can also build Release, especially if you are short on disk space.
 
 Optionally, you can enable tests by omitting the last three lines, or build
 all LLVM/Clang tools by omitting the "llc clang" part of the ninja command.
+The backend ships a lit test suite under `llvm/test/CodeGen/IA64/` covering
+codegen and ABI; run it with `ninja check-llvm-codegen-ia64`.
 
 Verify the target is registered:
 
@@ -110,9 +112,9 @@ suite). `-O0` and `-O2` reach the same point. Verified features:
   libcalls; divide-by-constant strength-reduced to shift + multiply
 
 **Floating point (`f32`/`f64`, IEEE double)**
-- `fadd`/`fsub`/`fmpy`/`fma`/`fms`/`fnma` carrying the `.d` double-precision
-  completer (an 82-bit FP register otherwise keeps extended precision);
-  `fneg`/`fabs`/`fnegabs`
+- `fadd`/`fsub`/`fmpy`/`fma`/`fms`/`fnma` carrying the precision completer
+  (`.d` for double, `.s` for native single precision — an 82-bit FP register
+  otherwise keeps extended precision); `fneg`/`fabs`/`fnegabs`
 - FP comparisons (`fcmp`) feeding predicates/branches
 - `int`↔`fp` conversions, `f32`↔`f64`; FP division and `sqrt` via libcall
 - FP arguments/returns (`F8`–`F15` + GR shadow), including FP varargs
@@ -147,6 +149,25 @@ suite). `-O0` and `-O2` reach the same point. Verified features:
   through the GR registers per psABI 8.5.4; **more than eight** arguments
   (register-home + stack laid out as one contiguous `va_list` image)
 
+**Atomics**
+- Atomic load/store lowered to ordinary load/store plus `mf` memory fences
+- `cmpxchg` at all widths via `cmpxchg`/`ar.ccs`, with both acquire and release
+  memory ordering; all atomic read-modify-write operations (`atomicrmw`, e.g.
+  fetch-and-add) built on top through LLVM's atomic expansion
+
+**Inline assembly**
+- Basic operand constraints `r`, `f`, and `m` (register and memory), wired
+  through `getConstraintType`/`getRegForInlineAsmConstraint` and the asm
+  printer's `PrintAsmOperand`/`PrintAsmMemoryOperand`; a dedicated `FR80`
+  register class carries full-width 80-bit FP operands
+
+**Unwind info**
+- Native `.IA_64.unwind` / `.IA_64.unwind_info` directives (`.proc`,
+  `.prologue`, `.save ar.pfs`, `.save rp`, `.fframe`, `.body`, `.restore`,
+  `.endp`) emitted via an `IA64TargetStreamer` and assembled by GNU `as` —
+  these, not DWARF `.eh_frame`, are what `gdb`/libunwind read to walk an
+  IA-64 stack, so backtraces work
+
 **Clang frontend**
 - `clang --target=ia64-epic-linux-gnu` parses and compiles C with the correct
   LP64 / 80-bit-`long double` type model and IA-64 SysV psABI data layout
@@ -159,7 +180,8 @@ suite). `-O0` and `-O2` reach the same point. Verified features:
 **ABI / codegen gaps**
 - **Tail-call optimisation** — calls are correct but never tail-called
   (`IsTailCall = false`)
-- **Inline assembly** operand constraints (no `getRegForInlineAsmConstraint`)
+- **Inline assembly** beyond the basic `r`/`f`/`m` constraints (no immediate
+  constraints, register-pair/output-modifier support, etc.)
 - `int`→`f64` rounding for integers wider than 53 significant bits needs a
   trailing `fnorm.d` (minor; not yet exercised by a test)
 - A native `frcpa` + Newton-Raphson software divide (the libgcc libcall is used
@@ -172,10 +194,10 @@ suite). `-O0` and `-O2` reach the same point. Verified features:
   assembler
 
 **Other deferred items**
-- DWARF/IA-64 unwind tables (`.cfi*` / `.IA_64.unwind`) and C++ exceptions —
-  without them `gdb` cannot reliably unwind past the faulting frame
-- Atomics (especially > 64-bit); short-branch relaxation; `-mcpu` / feature
-  tuning
+- **C++ exceptions** and DWARF `.eh_frame` CFI — the native `.IA_64.unwind`
+  directives (see *What Works*) are enough for `gdb` backtraces, but there is
+  no personality-routine/landing-pad support for unwinding through `throw`
+- Short-branch relaxation; `-mcpu` / feature tuning
 
 **Environment caveats (not backend limitations)**
 - The IA-64 runtime this was tested on flushes **subnormals to zero**, and
