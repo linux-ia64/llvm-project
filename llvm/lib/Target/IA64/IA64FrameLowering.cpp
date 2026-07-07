@@ -152,10 +152,17 @@ void IA64FrameLowering::emitPrologue(MachineFunction &MF,
         .setMIFlag(MachineInstr::FrameSetup);
   }
 
-  // Now, if we need to, save the old FP and set the new one.
+  // Now, if we need to, save the old FP and set the new one. The save slot
+  // sits at [r12+16, r12+24), above the 16-byte scratch area at [r12, r12+16)
+  // that the psABI lets any callee clobber; storing at offset 0 would let a
+  // call destroy the saved FP before the epilogue restores it.
   if (FP) {
-    BuildMI(MBB, MBBI, DL, TII->get(IA64::ST8))
+    BuildMI(MBB, MBBI, DL, TII->get(IA64::ADDIMM22), IA64::r22)
         .addReg(IA64::r12)
+        .addImm(16)
+        .setMIFlag(MachineInstr::FrameSetup);
+    BuildMI(MBB, MBBI, DL, TII->get(IA64::ST8))
+        .addReg(IA64::r22)
         .addReg(IA64::r5)
         .setMIFlag(MachineInstr::FrameSetup);
     BuildMI(MBB, MBBI, DL, TII->get(IA64::MOV), IA64::r5)
@@ -196,13 +203,19 @@ void IA64FrameLowering::emitEpilogue(MachineFunction &MF,
 
   // If we need to, restore the old FP.
   if (FP) {
+    // Compute the address of the save slot (see emitPrologue) before r5 is
+    // overwritten below.
+    BuildMI(MBB, MBBI, DL, TII->get(IA64::ADDIMM22), IA64::r22)
+        .addReg(IA64::r5)
+        .addImm(16)
+        .setMIFlag(MachineInstr::FrameDestroy);
     // Copy the FP into the SP (discards allocas).
     BuildMI(MBB, MBBI, DL, TII->get(IA64::MOV), IA64::r12)
         .addReg(IA64::r5)
         .setMIFlag(MachineInstr::FrameDestroy);
     // Restore the FP.
     BuildMI(MBB, MBBI, DL, TII->get(IA64::LD8), IA64::r5)
-        .addReg(IA64::r5)
+        .addReg(IA64::r22)
         .setMIFlag(MachineInstr::FrameDestroy);
   }
 
