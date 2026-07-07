@@ -31,9 +31,9 @@ define void @call_fp(ptr %fp) {
 ; CHECK-NEXT:    mov b6 = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.call.sptk rp = b6
+; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov r1 = r32
 ; CHECK-NEXT:    mov ar.pfs = r33
-; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov rp = r34
 ; CHECK-NEXT:    .restore sp
 ; CHECK-NEXT:    add r12 = 32, r12
@@ -66,9 +66,9 @@ define i64 @call_fp_ret(ptr %fp, i64 %a) {
 ; CHECK-NEXT:    mov b6 = r3
 ; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    br.call.sptk rp = b6
+; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov r1 = r32
 ; CHECK-NEXT:    mov ar.pfs = r34
-; CHECK-NEXT:    ;;
 ; CHECK-NEXT:    mov rp = r35
 ; CHECK-NEXT:    .restore sp
 ; CHECK-NEXT:    add r12 = 32, r12
