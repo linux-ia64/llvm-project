@@ -31,6 +31,24 @@
 
 using namespace llvm;
 
+namespace {
+// CCState with a one-bit extension used only by CC_IA64_FP_Common: whether
+// the previous element of an f32 HFA (see functionArgumentNeedsConsecutive
+// Registers) reserved a GR shadow slot whose second half is still available
+// for the next element. AnalyzeFormalArguments/AnalyzeCallOperands drive
+// CC_IA64_FP_Common in strict argument order for one contiguous CCState, so
+// a single bit threaded through this subclass is sufficient to pair up
+// consecutive elements. LowerFormalArguments and LowerCall construct this
+// subclass instead of a plain CCState wherever the argument list may contain
+// an f32 HFA; CC_IA64_FP_Common downcasts, which is safe because it is only
+// ever invoked (via CC_IA64/CC_IA64_Call) through those two call sites.
+class IA64CCState : public CCState {
+public:
+  using CCState::CCState;
+  bool PendingF32PairHalf = false;
+};
+} // end anonymous namespace
+
 // A floating-point scalar that is not long double occupies exactly one
 // parameter slot. IA-64's parameter model is positional: every argument,
 // integer or FP, consumes a slot in one shared sequence: the first eight slots
@@ -49,6 +67,22 @@ using namespace llvm;
 // integer parameter slots / register save area, never F8-F15 (psABI 8.5.4). It
 // is bit-cast to its i64 IEEE pattern (getf.d, the BCvt in LowerCall) and put
 // in the next slot register. SlotRegs is r32-r39 (incoming) / out0-out7 (call).
+//
+// A single-precision (f32) homogeneous FP aggregate (HFA) packs *two*
+// elements into each 64-bit GR shadow slot, though each element still gets
+// its own individual FP register (the Note under Figure 8-5,
+// IA64conventions.pdf p.8-9); Table 8-1 gives an aggregate's slot count as
+// (size+63)/64 for the aggregate as a whole, not per element. Clang coerces
+// such an HFA to a single `[N x float]` IR argument, but by the time each
+// element reaches this hook it has already been flattened by SelectionDAG's
+// generic aggregate splitting into N independent f32 values with no
+// surviving link to the aggregate they came from -- except that
+// IA64TargetLowering::functionArgumentNeedsConsecutiveRegisters (see
+// IA64ISelLowering.h) re-marks every element of such an aggregate with
+// ArgFlags.isInConsecutiveRegs()/isInConsecutiveRegsLast(). IA64CCState's
+// PendingF32PairHalf tracks, across these per-element calls, whether the
+// previous element already reserved a shadow slot whose second half this
+// element should reuse.
 static bool CC_IA64_FP_Common(unsigned ValNo, MVT ValVT, MVT LocVT,
                               ISD::ArgFlagsTy ArgFlags, CCState &State,
                               ArrayRef<MCPhysReg> SlotRegs) {
@@ -65,6 +99,38 @@ static bool CC_IA64_FP_Common(unsigned ValNo, MVT ValVT, MVT LocVT,
                                        MVT::i64, CCValAssign::BCvt));
     return true;
   }
+
+  if (ValVT == MVT::f32 && ArgFlags.isInConsecutiveRegs()) {
+    auto &St = static_cast<IA64CCState &>(State);
+    if (St.PendingF32PairHalf) {
+      // Second half of a pair: its GR shadow slot was already reserved by the
+      // first half, so allocate only the FP register.
+      St.PendingF32PairHalf = false;
+      if (unsigned FReg = State.AllocateReg(FPRegs)) {
+        State.addLoc(
+            CCValAssign::getReg(ValNo, ValVT, FReg, LocVT, CCValAssign::Full));
+        return true;
+      }
+      State.addLoc(CCValAssign::getMem(ValNo, ValVT,
+                                       State.AllocateStack(8, Align(8)), LocVT,
+                                       CCValAssign::Full));
+      return true;
+    }
+    // First half of a pair (or an odd trailing element with no partner):
+    // reserve a new shadow slot for both halves.
+    St.PendingF32PairHalf = !ArgFlags.isInConsecutiveRegsLast();
+    if (State.AllocateReg(SlotRegs)) {
+      unsigned FReg = State.AllocateReg(FPRegs);
+      State.addLoc(
+          CCValAssign::getReg(ValNo, ValVT, FReg, LocVT, CCValAssign::Full));
+      return true;
+    }
+    State.addLoc(CCValAssign::getMem(ValNo, ValVT,
+                                     State.AllocateStack(8, Align(8)), LocVT,
+                                     CCValAssign::Full));
+    return true;
+  }
+
   // Fixed FP arg: reserve the positional GR slot; within the first eight slots
   // the value rides in the parallel FP register. Slots and FP registers are
   // consumed only by FP args here (and the f80 hook), so the FP register is
@@ -380,6 +446,18 @@ bool IA64TargetLowering::isFMAFasterThanFMulAndFAdd(
   return VT == MVT::f32 || VT == MVT::f64 || VT == MVT::f80;
 }
 
+bool IA64TargetLowering::functionArgumentNeedsConsecutiveRegisters(
+    Type *Ty, CallingConv::ID /*CallConv*/, bool /*isVarArg*/,
+    const DataLayout & /*DL*/) const {
+  // Clang coerces a single-precision (f32) HFA of N elements to one
+  // `[N x float]` IR argument (IA64ABIInfo::coerceHFA in clang); every other
+  // aggregate this backend sees is either a scalar or an [N x i64]/[N x
+  // double]/[N x f80] coercion whose elements already occupy one full GR
+  // shadow slot each, needing no pairing. See CC_IA64_FP_Common.
+  ArrayType *AT = dyn_cast<ArrayType>(Ty);
+  return AT && AT->getElementType()->isFloatTy();
+}
+
 bool IA64TargetLowering::isFPImmLegal(const APFloat & /*Imm*/, EVT VT,
                                       bool /*ForCodeSize*/) const {
   // Keep f32/f64 constants out of the constant pool: we materialise them from
@@ -398,7 +476,7 @@ SDValue IA64TargetLowering::LowerFormalArguments(
   MachineRegisterInfo &RegInfo = MF.getRegInfo();
 
   SmallVector<CCValAssign, 16> ArgLocs;
-  CCState CCInfo(CallConv, isVarArg, MF, ArgLocs, *DAG.getContext());
+  IA64CCState CCInfo(CallConv, isVarArg, MF, ArgLocs, *DAG.getContext());
   CCInfo.AnalyzeFormalArguments(Ins, CC_IA64);
 
   for (CCValAssign &VA : ArgLocs) {
@@ -517,7 +595,7 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
 
   // Assign the outgoing arguments to out0-out7 / F8-F15 (caller convention).
   SmallVector<CCValAssign, 16> ArgLocs;
-  CCState CCInfo(CallConv, isVarArg, MF, ArgLocs, *DAG.getContext());
+  IA64CCState CCInfo(CallConv, isVarArg, MF, ArgLocs, *DAG.getContext());
   CCInfo.AnalyzeCallOperands(Outs, CC_IA64_Call);
 
   // A 16-byte scratch area sits at the bottom of the outgoing frame; keep the

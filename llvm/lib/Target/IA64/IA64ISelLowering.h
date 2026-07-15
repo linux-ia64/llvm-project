@@ -63,6 +63,18 @@ public:
   SDValue LowerCall(TargetLowering::CallLoweringInfo &CLI,
                     SmallVectorImpl<SDValue> &InVals) const override;
 
+  /// Clang coerces a single-precision (f32) homogeneous FP aggregate (HFA) to
+  /// one `[N x float]` IR argument, but by the time SelectionDAG's generic
+  /// argument-splitting has flattened it into N individual f32 values, the
+  /// grouping is lost. Returning true here re-marks every element with
+  /// ArgFlags.isInConsecutiveRegs()/isInConsecutiveRegsLast(), which
+  /// CC_IA64_FP_Common (IA64ISelLowering.cpp) uses to pack two elements into
+  /// each 64-bit GR shadow slot, matching the psABI's per-aggregate
+  /// (size+63)/64 slot count instead of one shadow slot per element.
+  bool functionArgumentNeedsConsecutiveRegisters(
+      Type *Ty, CallingConv::ID CallConv, bool isVarArg,
+      const DataLayout &DL) const override;
+
   SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const override;
 
   /// IA-64 ld/st carry no implicit ordering, so acquire/release/seq_cst
