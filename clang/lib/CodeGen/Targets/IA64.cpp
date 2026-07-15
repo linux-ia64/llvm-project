@@ -39,6 +39,10 @@ using namespace clang::CodeGen;
 // (an unused argument, ABIArgInfo's PaddingType) to burn it. Scalar long
 // doubles and HFAs need no padding -- the backend's f80 CC hook applies Next
 // Even itself -- but their slot consumption is mirrored in the count.
+//
+// Sub-64-bit scalars are *not* extended as arguments, but *are* as return
+// values. The two directions have different rules, and the asymmetry is
+// deliberate; see classifyArgumentType and classifyReturnType.
 //===----------------------------------------------------------------------===//
 
 namespace {
@@ -140,8 +144,22 @@ ABIArgInfo IA64ABIInfo::classifyArgumentType(QualType Ty,
     else
       ++Slots;
 
-    if (isPromotableIntegerTypeForABI(Ty))
-      return ABIArgInfo::getExtend(Ty);
+    // Argument slots are LSB-aligned, and a scalar narrower than the slot is
+    // "padded on the left; the padding is undefined" (psABI §8.5.1). So the
+    // upper bits of an incoming sub-64-bit argument carry no guarantee, and
+    // marking it signext/zeroext -- promising LLVM they are a real extension
+    // of the value -- is unsound: the callee would compare or use the full
+    // register and observe the padding. GCC does exercise that freedom; it
+    // stores an 8-bit argument to a memory slot with a plain `st1`, leaving
+    // the other seven bytes stale.
+    //
+    // Pass it directly instead. The backend's CCPromoteToType<i64> still gives
+    // the argument its own 64-bit slot, but with no extension attribute LLVM
+    // narrows the value at each use (`ld1` from a memory slot, `zxt1`/`sxt1`
+    // off an incoming register) rather than trusting the padding.
+    //
+    // Note this differs from classifyReturnType, where the psABI *does*
+    // mandate extension.
     return ABIArgInfo::getDirect();
   }
 
@@ -183,6 +201,9 @@ ABIArgInfo IA64ABIInfo::classifyReturnType(QualType RetTy) const {
     if (const EnumType *ET = RetTy->getAs<EnumType>())
       RetTy = ET->getDecl()->getIntegerType();
 
+    // Unlike an argument slot, a returned integer narrower than 32 bits "must
+    // be zero-filled (if unsigned) or sign-extended (if signed) to at least 32
+    // bits" (psABI §8.6), so signext/zeroext is warranted here.
     if (isPromotableIntegerTypeForABI(RetTy))
       return ABIArgInfo::getExtend(RetTy);
     return ABIArgInfo::getDirect();
