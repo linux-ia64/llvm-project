@@ -304,6 +304,9 @@ void IA64DAGToDAGISel::Select(SDNode *N) {
 
     // mov ar.ccv = cmp, glued to the cmpxchg so it stays immediately before it
     // (and the ar.ccv physreg def/use is not separated by another writer).
+    // The comparand is zero-extended to the full 64 bits by the type legalizer
+    // (see IA64TargetLowering::getExtendForAtomicCmpSwapArg), which is what the
+    // narrow cmpxchg forms require of ar.ccv.
     SDValue Ccv = SDValue(
         CurDAG->getMachineNode(IA64::MOV_TO_AR_CCV, dl, MVT::Glue, Cmp), 0);
 

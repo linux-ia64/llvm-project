@@ -87,6 +87,23 @@ public:
     return true;
   }
 
+  /// cmpxchg{1,2,4} read the memory word zero-extended into 64 bits and
+  /// compare it against the *full 64 bits* of ar.ccv, so the comparand must be
+  /// zero-extended into ar.ccv as well. Nothing otherwise guarantees the upper
+  /// bits of a narrow value in a GR are clear (a u32 argument, for instance,
+  /// may arrive sign-extended), and any garbage above the memory type's width
+  /// makes the hardware compare fail even when the memory word matches.
+  ///
+  /// That is worse than a missed swap: the success flag is computed by
+  /// comparing the returned old value (which the hardware always zero-extends,
+  /// hence the ZERO_EXTEND default of getExtendForAtomicOps) against the
+  /// comparand. Extend only one of the two and they disagree, so a cmpxchg the
+  /// hardware rejected -- and therefore did not store -- gets reported as
+  /// having succeeded.
+  ISD::NodeType getExtendForAtomicCmpSwapArg() const override {
+    return ISD::ZERO_EXTEND;
+  }
+
   /// The only atomic read-modify-write IA-64 has a single instruction for is
   /// fetchadd (and only for a few immediates), so lower every atomicrmw
   /// (add/sub/and/or/xor/nand/min/max/xchg/...) to a cmpxchg loop in IR. That
