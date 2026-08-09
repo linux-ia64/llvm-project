@@ -32,22 +32,138 @@
 using namespace llvm;
 
 namespace {
-// CCState with a one-bit extension used only by CC_IA64_FP_Common: whether
-// the previous element of an f32 HFA (see functionArgumentNeedsConsecutive
-// Registers) reserved a GR shadow slot whose second half is still available
-// for the next element. AnalyzeFormalArguments/AnalyzeCallOperands drive
-// CC_IA64_FP_Common in strict argument order for one contiguous CCState, so
-// a single bit threaded through this subclass is sufficient to pair up
-// consecutive elements. LowerFormalArguments and LowerCall construct this
-// subclass instead of a plain CCState wherever the argument list may contain
-// an f32 HFA; CC_IA64_FP_Common downcasts, which is safe because it is only
-// ever invoked (via CC_IA64/CC_IA64_Call) through those two call sites.
+// CCState with a small extension used only by CC_IA64_F32_HFA: which parameter
+// slot the previous element of an f32 HFA (see functionArgumentNeedsConsecutive
+// Registers) reserved, whose second half is still available for the next
+// element. AnalyzeFormalArguments/AnalyzeCallOperands drive the hook in strict
+// argument order for one contiguous CCState, so state threaded through this
+// subclass is sufficient to pair up consecutive elements. LowerFormalArguments
+// and LowerCall construct this subclass instead of a plain CCState wherever the
+// argument list may contain an f32 HFA; CC_IA64_FP_Common downcasts, which is
+// safe because it is only ever invoked (via CC_IA64/CC_IA64_Call) through those
+// two call sites.
 class IA64CCState : public CCState {
 public:
   using CCState::CCState;
+  // Set while the pair's second half is still outstanding.
   bool PendingF32PairHalf = false;
+  // Valid while PendingF32PairHalf: where the first element of the pair put
+  // the shared 64-bit slot - a GR parameter slot, or, if that register is
+  // null, the stack at PendingF32StackOffset.
+  // The GR becomes the value's actual holder when the FP registers are
+  // exhausted (see also the same case CC_IA64_FP_Common).
+  MCRegister PendingF32ShadowGR;
+  int64_t PendingF32StackOffset = 0;
 };
 } // end anonymous namespace
+
+// One element of a single-precision (f32) homogeneous FP aggregate (HFA).
+//
+// Such an aggregate packs *two* elements into each 64-bit GR parameter slot,
+// though each element still gets its own individual FP register (the Note under
+// Figure 8-5, IA64conventions.pdf p.8-9); Table 8-1 gives an aggregate's slot
+// count as (size+63)/64 for the aggregate as a whole, not per element. Clang
+// coerces such an HFA to a single `[N x float]` IR argument, but by the time
+// each element reaches this hook it has already been flattened by
+// SelectionDAG's generic aggregate splitting into N independent f32 values with
+// no surviving link to the aggregate they came from, except that
+// IA64TargetLowering::functionArgumentNeedsConsecutiveRegisters (see
+// IA64ISelLowering.h) re-marks every element of such an aggregate with
+// ArgFlags.isInConsecutiveRegs()/isInConsecutiveRegsLast(). IA64CCState tracks,
+// across these per-element calls, the slot a first element reserved and whose
+// second half the element after it should reuse.
+//
+// Because an f32 HFA consumes two FP registers per slot, it is the only
+// argument kind that can drain F8-F15 while parameter slots remain; the
+// leftover elements then travel in the GR slot itself, two per slot. See
+// CC_IA64_FP_Common for the parameter model this builds on.
+static bool CC_IA64_F32_HFA(unsigned ValNo, MVT ValVT, MVT LocVT,
+                            ISD::ArgFlagsTy ArgFlags, IA64CCState &State,
+                            ArrayRef<MCPhysReg> SlotRegs,
+                            ArrayRef<MCPhysReg> FPRegs) {
+  if (!State.PendingF32PairHalf) {
+    // First half of a pair (or an odd trailing element with no partner):
+    // reserve a new GR shadow slot to account for both halves.
+    State.PendingF32PairHalf = !ArgFlags.isInConsecutiveRegsLast();
+    if (MCRegister ShadowGR = State.AllocateReg(SlotRegs)) {
+      State.PendingF32ShadowGR = ShadowGR;
+      // An f32 HFA burns two FP registers per slot, so unlike every other FP
+      // argument it can drain F8-F15 while slots remain: the FP register is
+      // *not* guaranteed to be available just because a slot was.
+      if (MCRegister FReg = State.AllocateReg(FPRegs)) {
+        State.addLoc(
+            CCValAssign::getReg(ValNo, ValVT, FReg, LocVT, CCValAssign::Full));
+        return true;
+      }
+      // Out of FP registers: the shadow GR (more precisely, its low half)
+      // becomes the proper holder of the value, per SysV ABI.
+      State.addLoc(CCValAssign::getCustomReg(ValNo, ValVT, ShadowGR, MVT::i64,
+                                             CCValAssign::BCvt));
+      return true;
+    }
+    // Out of shadow slots: the pair is passed packed in one 8-byte stack slot.
+    // Only the first half allocates it; the second half addresses its upper
+    // 4 bytes.
+    State.PendingF32ShadowGR = MCRegister();
+    State.PendingF32StackOffset = State.AllocateStack(8, Align(8));
+    State.addLoc(CCValAssign::getMem(ValNo, ValVT, State.PendingF32StackOffset,
+                                     LocVT, CCValAssign::Full));
+    return true;
+  }
+
+  // Second half of a pair: the slot it shares with the first half is already
+  // reserved, so only the FP register is still to be decided.
+  State.PendingF32PairHalf = false;
+  if (!State.PendingF32ShadowGR) {
+    // The pair is on the stack. Like every other FP argument past the eighth
+    // parameter slot this element stays in memory - F8-F15 carry an argument
+    // only while it has a register slot - so it is simply the upper 4 bytes of
+    // the slot the first half allocated.
+    State.addLoc(CCValAssign::getMem(ValNo, ValVT,
+                                     State.PendingF32StackOffset + 4, LocVT,
+                                     CCValAssign::Full));
+    return true;
+  }
+  if (MCRegister FReg = State.AllocateReg(FPRegs)) {
+    State.addLoc(
+        CCValAssign::getReg(ValNo, ValVT, FReg, LocVT, CCValAssign::Full));
+    return true;
+  }
+
+  // No FP register left for this element: it travels in the pair's GR slot.
+  // Two f32s share one 64-bit slot, so which half this one occupies depends on
+  // where its partner went:
+  //
+  //  - Partner also in the slot (it missed an FP register too): the slot holds
+  //    the aggregate's plain little-endian image, so this element is the *high*
+  //    half. gcc passes such a fully-in-GR f32 HFA as DImode chunks, which
+  //    agrees.
+  //
+  //  - Partner in an FP register (the FP registers ran out mid-aggregate):
+  //    this element is the only one in the slot, and it goes in the *low* half.
+  //    The psABI wants an odd 4-byte hunk left-adjusted (i.e. the high half)
+  //    here, but gcc has always emitted it right-adjusted --
+  //    ia64_function_arg_1 in gcc/config/ia64/ia64.cc:
+  //
+  //        /* If we have an odd 4 byte hunk because we ran out of FR regs,
+  //           then this goes in a GR reg left adjusted/little endian, right
+  //           adjusted/big endian.  */
+  //        /* ??? Currently this is handled wrong, because 4-byte hunks are
+  //           always right adjusted/little endian.  */
+  //        if (offset & 0x4)
+  //          gr_mode = SImode;
+  //
+  //    Match gcc bug-for-bug: this is the ABI every ia64 library was built
+  //    against, and disagreeing would silently corrupt such calls.
+  //
+  // This needs a custom location because a CCValAssign cannot say "half of this
+  // register"; LowerFormalArguments/LowerCall recover the half by checking
+  // whether the preceding location is a custom f32 on the same register, which
+  // distinguishes the two cases above.
+  State.addLoc(CCValAssign::getCustomReg(ValNo, ValVT, State.PendingF32ShadowGR,
+                                         MVT::i64, CCValAssign::BCvt));
+  return true;
+}
 
 // A floating-point scalar that is not long double occupies exactly one
 // parameter slot. IA-64's parameter model is positional: every argument,
@@ -67,22 +183,6 @@ public:
 // integer parameter slots / register save area, never F8-F15 (psABI 8.5.4). It
 // is bit-cast to its i64 IEEE pattern (getf.d, the BCvt in LowerCall) and put
 // in the next slot register. SlotRegs is r32-r39 (incoming) / out0-out7 (call).
-//
-// A single-precision (f32) homogeneous FP aggregate (HFA) packs *two*
-// elements into each 64-bit GR shadow slot, though each element still gets
-// its own individual FP register (the Note under Figure 8-5,
-// IA64conventions.pdf p.8-9); Table 8-1 gives an aggregate's slot count as
-// (size+63)/64 for the aggregate as a whole, not per element. Clang coerces
-// such an HFA to a single `[N x float]` IR argument, but by the time each
-// element reaches this hook it has already been flattened by SelectionDAG's
-// generic aggregate splitting into N independent f32 values with no
-// surviving link to the aggregate they came from -- except that
-// IA64TargetLowering::functionArgumentNeedsConsecutiveRegisters (see
-// IA64ISelLowering.h) re-marks every element of such an aggregate with
-// ArgFlags.isInConsecutiveRegs()/isInConsecutiveRegsLast(). IA64CCState's
-// PendingF32PairHalf tracks, across these per-element calls, whether the
-// previous element already reserved a shadow slot whose second half this
-// element should reuse.
 static bool CC_IA64_FP_Common(unsigned ValNo, MVT ValVT, MVT LocVT,
                               ISD::ArgFlagsTy ArgFlags, CCState &State,
                               ArrayRef<MCPhysReg> SlotRegs) {
@@ -101,45 +201,36 @@ static bool CC_IA64_FP_Common(unsigned ValNo, MVT ValVT, MVT LocVT,
   }
 
   if (ValVT == MVT::f32 && ArgFlags.isInConsecutiveRegs()) {
-    auto &St = static_cast<IA64CCState &>(State);
-    if (St.PendingF32PairHalf) {
-      // Second half of a pair: its GR shadow slot was already reserved by the
-      // first half, so allocate only the FP register.
-      St.PendingF32PairHalf = false;
-      if (unsigned FReg = State.AllocateReg(FPRegs)) {
-        State.addLoc(
-            CCValAssign::getReg(ValNo, ValVT, FReg, LocVT, CCValAssign::Full));
-        return true;
-      }
-      State.addLoc(CCValAssign::getMem(ValNo, ValVT,
-                                       State.AllocateStack(8, Align(8)), LocVT,
-                                       CCValAssign::Full));
-      return true;
-    }
-    // First half of a pair (or an odd trailing element with no partner):
-    // reserve a new shadow slot for both halves.
-    St.PendingF32PairHalf = !ArgFlags.isInConsecutiveRegsLast();
-    if (State.AllocateReg(SlotRegs)) {
-      unsigned FReg = State.AllocateReg(FPRegs);
+    // An element of an f32 homogeneous FP aggregate follows a different rule
+    // (two elements share one slot).
+    return CC_IA64_F32_HFA(ValNo, ValVT, LocVT, ArgFlags,
+                           static_cast<IA64CCState &>(State), SlotRegs, FPRegs);
+  }
+
+  // Fixed FP arg: reserve the positional GR slot; within the first eight slots
+  // the value rides in the parallel FP register. Once the eight slots are gone
+  // the value goes on the stack.
+  if (MCRegister SlotReg = State.AllocateReg(SlotRegs)) {
+    if (MCRegister FReg = State.AllocateReg(FPRegs)) {
       State.addLoc(
           CCValAssign::getReg(ValNo, ValVT, FReg, LocVT, CCValAssign::Full));
       return true;
     }
-    State.addLoc(CCValAssign::getMem(ValNo, ValVT,
-                                     State.AllocateStack(8, Align(8)), LocVT,
-                                     CCValAssign::Full));
-    return true;
-  }
-
-  // Fixed FP arg: reserve the positional GR slot; within the first eight slots
-  // the value rides in the parallel FP register. Slots and FP registers are
-  // consumed only by FP args here (and the f80 hook), so the FP register is
-  // always available when a slot was, and they run out together; once the eight
-  // slots are gone the value goes on the stack.
-  if (State.AllocateReg(SlotRegs)) {
-    unsigned FReg = State.AllocateReg(FPRegs);
-    State.addLoc(
-        CCValAssign::getReg(ValNo, ValVT, FReg, LocVT, CCValAssign::Full));
+    // Slots and FP registers used to run out together: every FP argument took
+    // exactly one of each, so a free slot implied a free FP register. An f32
+    // HFA breaks that: it packs two elements into one slot but still gives
+    // each its own FP register, so F8-F15 can be gone while slots remain, and
+    // a plain FP argument after such an HFA lands here. Pass it in the GR slot
+    // it just reserved, the way gcc's ia64_function_arg_1 fills the leftover of
+    // an aggregate into GRs (DImode for an 8-byte value, SImode, i.e. the low
+    // half, for a 4-byte one).
+    if (ValVT == MVT::f64) {
+      State.addLoc(CCValAssign::getReg(ValNo, ValVT, SlotReg, MVT::i64,
+                                       CCValAssign::BCvt));
+      return true;
+    }
+    State.addLoc(CCValAssign::getCustomReg(ValNo, ValVT, SlotReg, MVT::i64,
+                                           CCValAssign::BCvt));
     return true;
   }
   State.addLoc(CCValAssign::getMem(ValNo, ValVT,
@@ -453,7 +544,8 @@ bool IA64TargetLowering::functionArgumentNeedsConsecutiveRegisters(
   // `[N x float]` IR argument (IA64ABIInfo::coerceHFA in clang); every other
   // aggregate this backend sees is either a scalar or an [N x i64]/[N x
   // double]/[N x f80] coercion whose elements already occupy one full GR
-  // shadow slot each, needing no pairing. See CC_IA64_FP_Common.
+  // shadow slot each, needing no pairing. See
+  // CC_IA64_FP_Common/CC_IA64_F32_HFA.
   ArrayType *AT = dyn_cast<ArrayType>(Ty);
   return AT && AT->getElementType()->isFloatTy();
 }
@@ -479,7 +571,38 @@ SDValue IA64TargetLowering::LowerFormalArguments(
   IA64CCState CCInfo(CallConv, isVarArg, MF, ArgLocs, *DAG.getContext());
   CCInfo.AnalyzeFormalArguments(Ins, CC_IA64);
 
-  for (CCValAssign &VA : ArgLocs) {
+  for (unsigned i = 0, e = ArgLocs.size(); i != e; ++i) {
+    CCValAssign &VA = ArgLocs[i];
+
+    // f32 argument(s) riding in a GR parameter slot because the FP argument
+    // registers were exhausted (see CC_IA64_FP_Common and CC_IA64_F32_HFA).
+    // The slot holds one element in its low 32 bits, and a second in its high
+    // 32 bits. Copy the slot in once and unpack, rather than making two live-in
+    // copies of the same physical register.
+    if (VA.isRegLoc() && VA.needsCustom()) {
+      assert(VA.getValVT() == MVT::f32 && VA.getLocVT() == MVT::i64 &&
+             "unexpected custom formal argument");
+      Register VReg = RegInfo.createVirtualRegister(&IA64::GRRegClass);
+      RegInfo.addLiveIn(VA.getLocReg(), VReg);
+      SDValue Slot = DAG.getCopyFromReg(Chain, dl, VReg, MVT::i64);
+
+      bool HasHigh = i + 1 != e && ArgLocs[i + 1].isRegLoc() &&
+                     ArgLocs[i + 1].needsCustom() &&
+                     ArgLocs[i + 1].getLocReg() == VA.getLocReg();
+      for (unsigned Half = 0, Halves = HasHigh ? 2 : 1; Half != Halves;
+           ++Half) {
+        SDValue Bits = Slot;
+        if (Half)
+          Bits = DAG.getNode(ISD::SRL, dl, MVT::i64, Slot,
+                             DAG.getShiftAmountConstant(32, MVT::i64, dl));
+        InVals.push_back(
+            DAG.getNode(ISD::BITCAST, dl, MVT::f32,
+                        DAG.getNode(ISD::TRUNCATE, dl, MVT::i32, Bits)));
+      }
+      i += HasHigh;
+      continue;
+    }
+
     if (VA.isRegLoc()) {
       // The argument arrives in a register.
       MVT RegVT = VA.getLocVT();
@@ -495,9 +618,14 @@ SDValue IA64TargetLowering::LowerFormalArguments(
       RegInfo.addLiveIn(VA.getLocReg(), VReg);
       SDValue ArgValue = DAG.getCopyFromReg(Chain, dl, VReg, RegVT);
 
-      // If the argument was widened to fill the register, narrow it back to
-      // its declared type.
-      if (RegVT != VA.getValVT()) {
+      if (VA.getLocInfo() == CCValAssign::BCvt) {
+        // An f64 in a GR slot (the FP registers ran out; see
+        // CC_IA64_FP_Common): reinterpret the i64 IEEE pattern, do not narrow
+        // it. Selects to setf.d.
+        ArgValue = DAG.getNode(ISD::BITCAST, dl, VA.getValVT(), ArgValue);
+      } else if (RegVT != VA.getValVT()) {
+        // If the argument was widened to fill the register, narrow it back to
+        // its declared type.
         if (RegVT.isInteger())
           ArgValue = DAG.getNode(ISD::TRUNCATE, dl, VA.getValVT(), ArgValue);
         else
@@ -734,6 +862,34 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
         }
       }
       ++i; // consumed both part-locations
+      continue;
+    }
+
+    // f32 argument(s) travelling in a GR parameter slot because the FP argument
+    // registers were exhausted (see CC_IA64_FP_Common and CC_IA64_F32_HFA).
+    // Build the 64-bit slot value: this element supplies the low 32 bits, and
+    // a second custom location on the same register the high 32 bits. Both are
+    // one register, so they must be combined into a single RegsToPass entry.
+    // (getf.s reads the FP value out; the OR/SHL is gcc's fpack.)
+    if (VA.isRegLoc() && VA.needsCustom()) {
+      assert(VA.getValVT() == MVT::f32 && VA.getLocVT() == MVT::i64 &&
+             "unexpected custom call argument");
+      auto SlotBits = [&](SDValue V) {
+        return DAG.getNode(ISD::ZERO_EXTEND, dl, MVT::i64,
+                           DAG.getNode(ISD::BITCAST, dl, MVT::i32, V));
+      };
+      SDValue Slot = SlotBits(Arg);
+      if (i + 1 != e && ArgLocs[i + 1].isRegLoc() &&
+          ArgLocs[i + 1].needsCustom() &&
+          ArgLocs[i + 1].getLocReg() == VA.getLocReg()) {
+        SDValue Hi = SlotBits(OutVals[ArgLocs[i + 1].getValNo()]);
+        Slot = DAG.getNode(
+            ISD::OR, dl, MVT::i64, Slot,
+            DAG.getNode(ISD::SHL, dl, MVT::i64, Hi,
+                        DAG.getShiftAmountConstant(32, MVT::i64, dl)));
+        ++i; // consumed both halves of the slot
+      }
+      RegsToPass.push_back(std::make_pair(VA.getLocReg(), Slot));
       continue;
     }
 

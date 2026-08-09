@@ -68,7 +68,7 @@ public:
   /// argument-splitting has flattened it into N individual f32 values, the
   /// grouping is lost. Returning true here re-marks every element with
   /// ArgFlags.isInConsecutiveRegs()/isInConsecutiveRegsLast(), which
-  /// CC_IA64_FP_Common (IA64ISelLowering.cpp) uses to pack two elements into
+  /// CC_IA64_F32_HFA (IA64ISelLowering.cpp) uses to pack two elements into
   /// each 64-bit GR shadow slot, matching the psABI's per-aggregate
   /// (size+63)/64 slot count instead of one shadow slot per element.
   bool functionArgumentNeedsConsecutiveRegisters(
