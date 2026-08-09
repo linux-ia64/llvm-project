@@ -262,8 +262,9 @@ static bool CC_IA64_Call_FP(unsigned ValNo, MVT ValVT, MVT LocVT,
 // A named (prototyped) f80 'long double' argument is passed in one FP register
 // in register format, but - being 16 bytes - it occupies two 16-byte-aligned
 // (Next-Even) parameter slots, so it shadows two general registers (psABI
-// 8.5.1). A variadic long double is passed in the general registers in memory
-// format (two slots). ShadowRegs is r32-r39 (incoming) or out0-out7 (outgoing).
+// 8.5.1). A variadic long double - or a named one that found no free FP
+// register - is passed in those two general registers in memory format
+// instead. ShadowRegs is r32-r39 (incoming) or out0-out7 (outgoing).
 static bool CC_IA64_F80_Common(unsigned ValNo, MVT ValVT, MVT LocVT,
                                ISD::ArgFlagsTy ArgFlags, CCState &State,
                                ArrayRef<MCPhysReg> ShadowRegs) {
@@ -280,13 +281,14 @@ static bool CC_IA64_F80_Common(unsigned ValNo, MVT ValVT, MVT LocVT,
   if (NextSlot < ShadowRegs.size() && (NextSlot & 1))
     State.AllocateReg(ShadowRegs);
 
-  if (ArgFlags.isVarArg()) {
-    // A variadic long double is passed in the *general* registers in memory
-    // format (psABI 8.5), occupying two parameter slots; spill into the stack
-    // image if the registers are exhausted. Emit two i64 part-locations (this
-    // value gets two CCValAssigns); LowerCall splits the f80 into the two
-    // memory-format halves via an stfe/ld8 temporary. The first stack part is
-    // 16-byte aligned to keep the Next-Even policy on the stack.
+  // A long double that travels in the *general* registers goes in memory
+  // format (psABI 8.5), occupying two parameter slots; spill into the stack
+  // image if the registers are exhausted. Emit two i64 part-locations (this
+  // value gets two CCValAssigns); LowerCall splits the f80 into the two
+  // memory-format halves via an stfe/ld8 temporary and LowerFormalArguments
+  // reassembles it with the mirror image. The first stack part is 16-byte
+  // aligned to keep the Next-Even policy on the stack.
+  auto AssignMemoryFormatParts = [&]() {
     for (int Part = 0; Part < 2; ++Part) {
       if (unsigned Reg = State.AllocateReg(ShadowRegs))
         State.addLoc(CCValAssign::getReg(ValNo, MVT::i64, Reg, MVT::i64,
@@ -297,7 +299,13 @@ static bool CC_IA64_F80_Common(unsigned ValNo, MVT ValVT, MVT LocVT,
             MVT::i64, CCValAssign::Full));
     }
     return true;
-  }
+  };
+
+  // A prototyped variadic callee reads its variable arguments out of the
+  // parameter slots, never F8-F15 (psABI 8.5.4).
+  if (ArgFlags.isVarArg())
+    return AssignMemoryFormatParts();
+
   if (unsigned FReg = State.AllocateReg(FPRegs)) {
     // Consume the two (now even-aligned) shadow GR parameter slots this 16-byte
     // value occupies so following arguments keep their positional slots.
@@ -307,7 +315,20 @@ static bool CC_IA64_F80_Common(unsigned ValNo, MVT ValVT, MVT LocVT,
         CCValAssign::getReg(ValNo, ValVT, FReg, LocVT, CCValAssign::Full));
     return true;
   }
-  // All FP argument registers used: pass the 16-byte value on the stack.
+
+  // All FP argument registers used, but the two parameter slots this value owns
+  // may still be free: an f32 HFA takes two FP registers per slot (see
+  // CC_IA64_F32_HFA), so it can drain F8-F15 while slots remain, and a long
+  // double after one lands here. Pass it in those general registers in memory
+  // format, exactly like the variadic case above - gcc's ia64_function_arg_1
+  // likewise falls back to `gen_rtx_REG (mode, basereg + cum->words)` once
+  // cum->fp_regs is spent. The Next-Even burn above leaves the next free shadow
+  // GR at an even index, so the pair this value needs is either wholly
+  // available or wholly gone.
+  if (State.getFirstUnallocated(ShadowRegs) < ShadowRegs.size())
+    return AssignMemoryFormatParts();
+
+  // Out of slots as well: pass the 16-byte value on the stack.
   unsigned Off = State.AllocateStack(16, Align(16));
   State.addLoc(
       CCValAssign::getMem(ValNo, ValVT, Off, LocVT, CCValAssign::Full));
@@ -603,6 +624,39 @@ SDValue IA64TargetLowering::LowerFormalArguments(
       continue;
     }
 
+    // A long double (f80) split across two general registers in memory format
+    // because the FP argument registers were exhausted (see
+    // CC_IA64_F80_Common): this location and the next carry the same ValNo.
+    // There is no register instruction that rebuilds the 80-bit register format
+    // out of the memory image, so mirror LowerCall and round-trip through a
+    // 16-byte temporary: st8 the two halves, ldfe the value back. Both halves
+    // are registers here - the hook only splits the value when the slot pair it
+    // needs is free, and takes a single 16-byte memory location otherwise.
+    if (i + 1 != e && ArgLocs[i + 1].getValNo() == VA.getValNo()) {
+      assert(VA.isRegLoc() && ArgLocs[i + 1].isRegLoc() &&
+             VA.getLocVT() == MVT::i64 && "unexpected f80 part locations");
+      int FI = MF.getFrameInfo().CreateStackObject(16, Align(16), false);
+      SDValue Tmp = DAG.getFrameIndex(FI, MVT::i64);
+      SDValue Stores[2];
+      for (unsigned Part = 0; Part < 2; ++Part) {
+        Register VReg = RegInfo.createVirtualRegister(&IA64::GRRegClass);
+        RegInfo.addLiveIn(ArgLocs[i + Part].getLocReg(), VReg);
+        SDValue Half = DAG.getCopyFromReg(Chain, dl, VReg, MVT::i64);
+        SDValue Addr =
+            Part ? DAG.getNode(ISD::ADD, dl, MVT::i64, Tmp,
+                               DAG.getIntPtrConstant(8, dl))
+                 : Tmp;
+        Stores[Part] = DAG.getStore(
+            Chain, dl, Half, Addr,
+            MachinePointerInfo::getFixedStack(MF, FI, 8 * Part));
+      }
+      SDValue St = DAG.getNode(ISD::TokenFactor, dl, MVT::Other, Stores);
+      InVals.push_back(DAG.getLoad(MVT::f80, dl, St, Tmp,
+                                   MachinePointerInfo::getFixedStack(MF, FI)));
+      ++i; // consumed both part-locations
+      continue;
+    }
+
     if (VA.isRegLoc()) {
       // The argument arrives in a register.
       MVT RegVT = VA.getLocVT();
@@ -805,9 +859,11 @@ SDValue IA64TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
       }
     }
 
-    // Variadic long double (f80): the CC gave it two consecutive i64 slots --
-    // this location and the next, both tagged with the same ValNo. It is passed
-    // in memory format (psABI 8.5).
+    // Long double (f80) travelling in the general registers - variadic, or
+    // named with the FP argument registers exhausted (see CC_IA64_F80_Common).
+    // The CC gave it two consecutive i64 slots: this location and the next,
+    // both tagged with the same ValNo. It is passed in memory format
+    // (psABI 8.5).
     if (i + 1 < e && ArgLocs[i + 1].getValNo() == VA.getValNo()) {
       CCValAssign &VAHi = ArgLocs[i + 1];
 
